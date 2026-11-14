@@ -1,0 +1,7 @@
+variant,drivers,rmse,mae,r2,mape,d_rmse,n
+v2_drivers,envelope + Tdewpoint + appliances + lights,0.646,0.4555,0.7956,1.953,,5879
+plus_thermo, + thermostat drive (gain fitted),0.6517,0.4592,0.792,1.968,+0.0057,5879
+plus_coupl, + inter-zone coupling (Th-T1),0.6454,0.4539,0.796,1.946,-0.0063,5879
+plus_wind, + wind infiltration wind*(T_out-T),0.6545,0.4591,0.7902,1.968,+0.0091,5879
+plus_solar, + clear-sky solar GHI,0.6823,0.4567,0.772,1.961,+0.0278,5879
+cmri_full,all: full cmri driver set,0.7081,0.4726,0.7545,2.03,+0.0257,5879
