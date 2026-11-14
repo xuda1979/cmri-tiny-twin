@@ -1,0 +1,6 @@
+coefficient,value,role
+env a_env,0.06242,envelope gain a_env (per step)
+dewpoint a_rhu,0.004447,dewpoint latent drive
+appliances a_nrg,-0.003096,appliance heat gain
+lights a_lux,0.012579,lights heat gain
+bias,0.04712,constant bias (degC/step)

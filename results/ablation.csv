@@ -1,0 +1,6 @@
+variant,drivers,RMSE,MAE,R2,MAPE,n
+env_only,envelope,0.7467,0.595,0.727,2.5401,5879
+env_app,envelope + appliances,0.7137,0.5246,0.7506,2.2427,5879
+full,envelope + dewpoint + appliances + lights,0.646,0.4555,0.7956,1.953,5879
+v1_handbook,envelope + appliance thermostat (no fitting),5.8813,5.5538,-15.9385,24.255,5879
+persistence_resync,"predict T(t+1)=T(t), daily re-anchor",0.6246,0.5019,0.809,2.193,5879
