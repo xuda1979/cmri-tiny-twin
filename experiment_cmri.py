@@ -12,15 +12,16 @@ cmri twin:
   house zone    Th : same driver set on the mean of the non-outlier house
                      sensors T2,T3,T4,T5,T7,T8,T9 (T6 excluded: anomalous)
 
-The cmri twin adds three physically-motivated drivers the single-zone twins
-ignore (wind infiltration, solar irradiance, inter-zone coupling). All
-coefficients are OLS-fitted on the training segment only (same
-LinearModel normal-equations machinery as tiny_twin_v2).
+The cmri twin adds four physically-motivated drivers the single-zone twins
+ignore (wind infiltration, solar irradiance, inter-zone coupling, building
+fabric thermal mass T_mass = EMA of T_out with physical time constant tau;
+see cmri_twin.fabric_mass). All coefficients are OLS-fitted on the training
+segment only (same LinearModel normal-equations machinery as tiny_twin_v2).
 
 Also reports a whole-twin ablation (resync protocol): stepping up from v2's
 own driver set {env, dewpoint, appliances, lights} through +thermostat,
-+coupling, +wind, +solar to the full cmri model, so we can see *which*
-physics block buys the improvement.
++coupling, +fabric-mass, +wind, +solar to the full cmri model, so we can see
+*which* physics block buys the improvement.
 
 Artifacts → results/metrics_cmri.csv, results/coefficients_cmri.csv,
 results/predictions_cmri.csv, results/comparison_cmri.md,
@@ -42,18 +43,24 @@ from run_experiment import (OUT, ROOT, TRAIN_FRAC, PersistenceModel, V1Model,
 from tiny_twin_v2 import CalibratedTwin, LinearModel, Q_SCALE
 
 import cmri_twin
-from cmri_twin import CmriTwin, T_SET, clear_sky_ghi, house_zone
+from cmri_twin import (CmriTwin, clear_sky_ghi, fabric_mass, house_zone)
 
 DATA = ROOT / "data" / "energydata_complete.csv"
 
 # ---------------------------------------------------------------------------
-# Frozen winner of the withintrain CV (select_cv.py): nws mask, Tset 20, a=100.
-# nws = envelope, coupling, dewpoint, appliances, lights, thermostat — wind and
-# clear-sky solar dropped from both zone equations (unstable on this dataset).
-# Test data is NEVER used for selection or tuning.
+# Frozen winner of the within-train CV (select_cv.py): nws+fab mask, Tset 21,
+# alpha 300, fabric-mass EMA w=0.944 (tau = 3 h).  The documented fold-SD tie
+# rule broke the resync tie in favor of the lowest free-run RMSE, which is how
+# the slow building-fabric driver (driver 8) got in over the strict resync
+# winner (nws, tset 20, alpha 100): its whole claim is anchoring the long-
+# horizon open-loop trend, so it is selected on free-run robustness, not
+# resync noise.  wind and clear-sky solar are dropped from both zone equations
+# (unstable on this dataset).  Test data is NEVER used for selection or tuning.
 # ---------------------------------------------------------------------------
-CMRI_ALPHA = 100.0
-CMRI_KEEP = (0, 3, 4, 5, 6, 7)  # 0 env, 3 cpl, 4 dew, 5 appl, 6 light, 7 stats
+CMRI_ALPHA = 300.0
+CMRI_T_SET = 21.0
+CMRI_W = 0.944  # fabric-mass EMA smoothing weight (tau = 3 h), see fabric_mass
+CMRI_KEEP = (0, 3, 4, 5, 6, 7, 8)  # env, cpl, dew, appl, light, thermo, fabric
 
 # ---------------------------------------------------------------------------
 # Data loading (full sensor panel + weather + computed GHI)
@@ -96,7 +103,7 @@ def run_protocol_cmri(twin, state, recs, resync_days):
     """Step a two-zone twin over records; return kitchen predictions.
 
     recs: list of (T1_obs, Th_obs, t_out, Tdewpoint, Appliances, lights,
-                   Windspeed, GHI).
+                   Windspeed, GHI, T_mass).
     resync_days: list of index-lists (one per day), or None for free-run.
     state: initial observed (T1, Th).
     Returns kitchen pred list of len(recs); None where no prediction exists
@@ -107,15 +114,15 @@ def run_protocol_cmri(twin, state, recs, resync_days):
     if resync_days is None:
         t1, th = state
         for j in range(1, n):
-            _, _, t_out, dew, load, lux, wind, ghi = recs[j - 1]
-            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi)
+            _, _, t_out, dew, load, lux, wind, ghi, tm = recs[j - 1]
+            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm)
             pred[j] = t1
         return pred
     for day in resync_days:
         t1, th = recs[day[0]][0], recs[day[0]][1]
         for a, b in zip(day[:-1], day[1:]):
-            _, _, t_out, dew, load, lux, wind, ghi = recs[a]
-            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi)
+            _, _, t_out, dew, load, lux, wind, ghi, tm = recs[a]
+            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm)
             pred[b] = t1
     return pred
 
@@ -135,18 +142,21 @@ def days_of(dates, off, end=None):
 
 
 class CmriVariant:
-    """Two-zone twin using only a subset of the 8 cmri drivers (both zones)."""
+    """Two-zone twin using only a subset of the 9 cmri drivers (both zones)."""
 
     def __init__(self, keep: tuple[int, ...]):
         self.keep = keep
         self.k = LinearModel()
         self.h = LinearModel()
 
-    def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi, t_set=T_SET):
+    def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi, t_mass,
+            t_set=CMRI_T_SET):
         Xk, yk, Xh, yh = [], [], [], []
         for i in range(len(T1) - 1):
-            fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], t_set)
-            fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], t_set)
+            fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
+                                   lux[i], wind[i], ghi[i], t_mass[i], t_set)
+            fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
+                                   lux[i], wind[i], ghi[i], t_mass[i], t_set)
             Xk.append([fk[j] for j in self.keep])
             yk.append(T1[i + 1] - T1[i])
             Xh.append([fh[j] for j in self.keep])
@@ -154,23 +164,30 @@ class CmriVariant:
         self.k.fit(Xk, yk)
         self.h.fit(Xh, yh)
 
-    def step(self, t1, th, t_out, dew, load, lux, wind, ghi, t_set=T_SET):
-        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_set)
-        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_set)
+    def step(self, t1, th, t_out, dew, load, lux, wind, ghi, t_mass,
+             t_set=CMRI_T_SET):
+        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi,
+                               t_mass, t_set)
+        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi,
+                               t_mass, t_set)
         return (t1 + self.k.predict([fk[j] for j in self.keep]),
                 th + self.h.predict([fh[j] for j in self.keep]))
 
 
 # Feature indices (both zone equations): 0 env, 1 wind, 2 solar, 3 coupling,
-# 4 dewpoint, 5 appliances, 6 lights, 7 thermostat.  Bias added by LinearModel.
+# 4 dewpoint, 5 appliances, 6 lights, 7 thermostat, 8 fabric mass (T_mass-T).
+# Bias added by LinearModel.  Ordered additive chain for the ablation table:
+# v2 drivers -> +thermostat -> +coupling -> +fabric mass -> +wind -> +solar
+# -> full 9-driver cmri model.
 ABLATIONS = [
     # (short name, keep-features, human driver description)
     ("v2_drivers", (0, 4, 5, 6), "envelope + Tdewpoint + appliances + lights"),
     ("plus_thermo", (0, 4, 5, 6, 7), " + thermostat drive (gain fitted)"),
     ("plus_coupl", (0, 3, 4, 5, 6, 7), " + inter-zone coupling (Th-T1)"),
-    ("plus_wind", (0, 1, 4, 5, 6, 7), " + wind infiltration wind*(T_out-T)"),
-    ("plus_solar", (0, 2, 4, 5, 6, 7), " + clear-sky solar GHI"),
-    ("cmri_full", (0, 1, 2, 3, 4, 5, 6, 7), "all: full cmri driver set"),
+    ("plus_fab", (0, 3, 4, 5, 6, 7, 8), " + building-fabric mass (T_mass-T)"),
+    ("plus_wind", (0, 1, 3, 4, 5, 6, 7, 8), " + wind infiltration wind*(T_out-T)"),
+    ("cmri_full", (0, 1, 2, 3, 4, 5, 6, 7, 8),
+     " + clear-sky solar GHI (full 9-driver cmri model)"),
 ]
 
 
@@ -260,17 +277,18 @@ def run() -> None:
     T_h = data["Th"]
 
     recs5 = list(zip(T, t_out, dew, load, lux))
-    recs8 = list(zip(T, T_h, t_out, dew, load, lux, wind, ghi))
+    tm = fabric_mass(t_out, CMRI_W)
+    recs8 = list(zip(T, T_h, t_out, dew, load, lux, wind, ghi, tm))
 
     test_days = days_of(dates, split)
     train_days = days_of(dates, 0, split)
 
     def fit_arrays(lo, hi):
         s = slice(lo, hi)
-        return (T[s], T_h[s], t_out[s], dew[s], load[s], lux[s], wind[s], ghi[s])
+        return (T[s], T_h[s], t_out[s], dew[s], load[s], lux[s], wind[s], ghi[s], tm[s])
 
     # ---- calibrate on TRAINING ONLY (config = frozen CV winner) ----
-    cmri = CmriTwin(alpha=CMRI_ALPHA, t_set=T_SET, keep=CMRI_KEEP)
+    cmri = CmriTwin(alpha=CMRI_ALPHA, t_set=CMRI_T_SET, keep=CMRI_KEEP)
     cmri.fit(*fit_arrays(0, split))
 
     v2 = CalibratedTwin()
@@ -369,9 +387,9 @@ def run() -> None:
                  "solar gain (C per W/m^2 per step)", "coupling gain (C per dT-step)",
                  "dewpoint latent gain", "appliance heat gain (per 100 W)",
                  "lights heat gain (per 100 W)", "thermostat gain (C per max(Tsp-T,0)-step)",
-                 "bias (C/step)"]
+                 "fabric-mass gain (C per dT-step)"]
         # coefs layout = [bias, kept-driver coefs...]; kept drivers follow
-        # CMRI_KEEP order; names/roles come from the full 8-driver layout.
+        # CMRI_KEEP order; names/roles come from the full 9-driver layout.
         def write_zone(zone, coefs, names):
             for idx, c in enumerate(coefs):
                 if idx == 0:
@@ -411,10 +429,11 @@ def run() -> None:
     md.append("- Target: indoor kitchen temperature T1 (°C). All fitted models calibrated on train only; v1 never touches data.")
     md.append("- **cmri twin:** coupled two-zone RC. Kitchen T1 + house zone T_h = mean(T2,T3,T4,T5,T7,T8,T9); "
               "T6 excluded as an anomalous sensor. Driver set (all OLS-fitted): envelope, inter-zone coupling, "
-              "Tdewpoint, appliances, lights, thermostat drive. Wind infiltration `wind*(T_out-T)` and clear-sky "
-              "solar GHI (Chievres AB, Belgium, DST-aware) are implemented and calibrated but were **selected out** "
-              "by the within-train CV because the full driver mask loses free-run stability on this dataset; "
-              "the frozen winner is keep (0,3,4,5,6,7).")
+              "Tdewpoint, appliances, lights, thermostat drive, and building-fabric thermal mass "
+              "`(T_mass-T)` (EMA of T_out, tau = 3 h, exogenous). Wind infiltration `wind*(T_out-T)` and "
+              "clear-sky solar GHI (Chievres AB, Belgium, DST-aware) are implemented and calibrated but were "
+              "**selected out** by the within-train CV because they lose free-run stability on this dataset; "
+              "the frozen winner is keep (0,3,4,5,6,7,8) `T_set=21.0 alpha=300 w=0.944`.")
     md.append("")
     md.append("## Held-out test metrics (resync protocol — primary)")
     md.append("")
@@ -453,7 +472,7 @@ def run() -> None:
     md.append("")
     md.append("Config is the frozen within-train CV winner: drivers "
               f"{'+'.join(cmri.K_NAMES[j].split()[0] for j in CMRI_KEEP)} "
-              f"(keep {list(CMRI_KEEP)}), T_set={T_SET}, alpha={CMRI_ALPHA}.")
+              f"(keep {list(CMRI_KEEP)}), T_set={CMRI_T_SET}, alpha={CMRI_ALPHA}.")
     md.append("")
     md.append("### Kitchen zone T1")
     md.append("")

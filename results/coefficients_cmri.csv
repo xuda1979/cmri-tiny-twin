@@ -1,15 +1,17 @@
 zone,coefficient,value,role
-kitchen,bias,0.061243,bias (C/step)
-kitchen,env (T_out-T1),0.004334,envelope gain (C per dT-step)
-kitchen,coupl (Th-T1),0.000412,coupling gain (C per dT-step)
-kitchen,Tdewpoint,-0.003003,dewpoint latent gain
-kitchen,appliances/100,0.01249,appliance heat gain (per 100 W)
-kitchen,lights/100,0.046825,lights heat gain (per 100 W)
-kitchen,"thermostat max(Tsp-T1,0)",-0.001312,"thermostat gain (C per max(Tsp-T,0)-step)"
-house,bias,0.027382,bias (C/step)
-house,env (T_out-Th),0.002191,envelope gain (C per dT-step)
-house,coupl (T1-Th),-0.002799,coupling gain (C per dT-step)
-house,Tdewpoint,-0.001291,dewpoint latent gain
-house,appliances/100,0.008359,appliance heat gain (per 100 W)
-house,lights/100,0.046838,lights heat gain (per 100 W)
-house,"thermostat max(Tsp-Th,0)",0.00081,"thermostat gain (C per max(Tsp-T,0)-step)"
+kitchen,bias,0.031891,bias (C/step)
+kitchen,env (T_out-T1),0.006736,envelope gain (C per dT-step)
+kitchen,coupl (Th-T1),0.00093,coupling gain (C per dT-step)
+kitchen,Tdewpoint,-0.001684,dewpoint latent gain
+kitchen,appliances/100,0.012249,appliance heat gain (per 100 W)
+kitchen,lights/100,0.048591,lights heat gain (per 100 W)
+kitchen,"thermostat max(Tsp-T1,0)",-6.8e-05,"thermostat gain (C per max(Tsp-T,0)-step)"
+kitchen,fabric mass (Tmass-T1),-0.004114,fabric-mass gain (C per dT-step)
+house,bias,-0.004157,bias (C/step)
+house,env (T_out-Th),0.005235,envelope gain (C per dT-step)
+house,coupl (T1-Th),-0.001744,coupling gain (C per dT-step)
+house,Tdewpoint,0.000104,dewpoint latent gain
+house,appliances/100,0.008126,appliance heat gain (per 100 W)
+house,lights/100,0.049476,lights heat gain (per 100 W)
+house,"thermostat max(Tsp-Th,0)",0.001161,"thermostat gain (C per max(Tsp-T,0)-step)"
+house,fabric mass (Tmass-Th),-0.004848,fabric-mass gain (C per dT-step)

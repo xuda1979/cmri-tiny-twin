@@ -19,16 +19,28 @@ RC model ignores:
      inside this dataset), with solar-elevation geometry, equation-of-time and
      Kasten-Young air mass.
 
-  4. YET the driver coefficients are all OLS-fitted on the real training
+  4. FABRIC THERMAL MASS.  A building-fabric state T_mass (the internal mass
+     of walls/floors, which equilibrates with the outside air over many
+     hours, not minutes) as an exogenous EMA of T_out: with dt = 600 s and
+     time constant tau, T_mass[t] = (1-w)*T_out[t] + w*T_mass[t-1],
+     w = exp(-dt/tau).  Because first-order RC zones already track short
+     time scales through the (T_out - T) term, the slow T_mass drives the
+     long-horizon open-loop trend.  T_mass is a pure function of observed
+     weather, so the step API stays single-step/exogenous (no model state
+     to re-anchor).
+
+  5. YET the driver coefficients are all OLS-fitted on the real training
      segment (same closed-form normal-equations machinery as tiny_twin_v2),
      so every physics term is *calibrated to data*, never guessed:
 
         kitchen:  dT1 = a1*(T_out-T1) + a2*wind*(T_out-T1) + a3*GHI
                        + a4*(T_h-T1)  + a5*Tdewpoint + a6*Appl/100
-                       + a7*lux/100   + a8*max(T_set-T1, 0) + b1
+                       + a7*lux/100   + a8*max(T_set-T1, 0)
+                       + a9*(T_mass-T1) + b1
         house:    dTh = c1*(T_out-Th) + c2*wind*(T_out-Th) + c3*GHI
                        + c4*(T1-Th)   + c5*Tdewpoint + c6*Appl/100
-                       + c7*lux/100   + c8*max(T_set-Th, 0) + b2
+                       + c7*lux/100   + c8*max(T_set-Th, 0)
+                       + c9*(T_mass-Th) + b2
 
 Pure Python standard library; reuses tiny_twin_v2.LinearModel.
 """
@@ -89,42 +101,68 @@ def clear_sky_ghi(d: dt.datetime) -> float:
     return 0.9 * i0 * sin_el * 0.7 ** (am ** 0.678)
 
 
+def fabric_mass(t_out: list[float], w: float) -> list[float]:
+    """Building-fabric thermal state: external air temperature averaged into a
+    slow thermal-mass capacitor.
+
+    With dt = 600 s and physical time constant tau, w = exp(-dt/tau) (e.g.
+    tau = 6 h -> w = exp(-1/36) ~ 0.973).  T_mass[t] = (1-w)*T_out[t] +
+    w*T_mass[t-1], seeded at T_out[0].  This is a pure function of observed
+    weather -- exogenous, fully re-anchored by re-computation -- so the twin's
+    step API stays single-step with no hidden model state.
+    """
+    out = [t_out[0]]
+    for i in range(1, len(t_out)):
+        out.append((1.0 - w) * t_out[i] + w * out[-1])
+    return out
+
+
 class CmriTwin:
     """Coupled two-zone RC twin; both zone equations OLS-calibrated on train."""
 
     K_NAMES = ["env (T_out-T1)", "wind infil wind*(T_out-T1)", "solar GHI",
                "coupl (Th-T1)", "Tdewpoint", "appliances/100", "lights/100",
-               "thermostat max(Tsp-T1,0)", "bias"]
+               "thermostat max(Tsp-T1,0)", "fabric mass (Tmass-T1)"]
     H_NAMES = ["env (T_out-Th)", "wind infil wind*(T_out-Th)", "solar GHI",
                "coupl (T1-Th)", "Tdewpoint", "appliances/100", "lights/100",
-               "thermostat max(Tsp-Th,0)", "bias"]
+               "thermostat max(Tsp-Th,0)", "fabric mass (Tmass-Th)"]
 
     def __init__(self, alpha: float = 0.0, t_set: float = T_SET,
                  keep: tuple[int, ...] | None = None) -> None:
         self.alpha = alpha
         self.t_set = t_set
         # keep: subset of driver indices {0 env, 1 wind, 2 solar, 3 coupling,
-        # 4 dewpoint, 5 appliances, 6 lights, 7 thermostat}; None = all 8.
-        self.keep = tuple(range(8)) if keep is None else tuple(keep)
+        # 4 dewpoint, 5 appliances, 6 lights, 7 thermostat, 8 fabric mass};
+        # None = all 9.
+        self.keep = tuple(range(9)) if keep is None else tuple(keep)
         self.k = LinearModel(alpha=alpha)
         self.h = LinearModel(alpha=alpha)
         self.fitted = False
 
     @staticmethod
-    def _k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_set):
+    def _k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_mass, t_set):
         return [t_out - t1, wind * (t_out - t1), ghi, th - t1, dew,
-                load / Q_SCALE, lux / Q_SCALE, max(t_set - t1, 0.0)]
+                load / Q_SCALE, lux / Q_SCALE, max(t_set - t1, 0.0),
+                t_mass - t1]
 
     @staticmethod
-    def _h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_set):
+    def _h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_mass, t_set):
         return [t_out - th, wind * (t_out - th), ghi, t1 - th, dew,
-                load / Q_SCALE, lux / Q_SCALE, max(t_set - th, 0.0)]
+                load / Q_SCALE, lux / Q_SCALE, max(t_set - th, 0.0),
+                t_mass - th]
 
-    def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi) -> None:
+    def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi,
+            t_mass=None) -> None:
+        # t_mass = building-fabric state (see fabric_mass).  None falls back to
+        # T_out, which keeps the original 8-driver twin a valid special case.
+        if t_mass is None:
+            t_mass = t_out
         Xk, yk, Xh, yh = [], [], [], []
         for i in range(len(T1) - 1):
-            fk = self._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], self.t_set)
-            fh = self._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], self.t_set)
+            fk = self._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i],
+                               wind[i], ghi[i], t_mass[i], self.t_set)
+            fh = self._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i],
+                               wind[i], ghi[i], t_mass[i], self.t_set)
             Xk.append([fk[j] for j in self.keep])
             yk.append(T1[i + 1] - T1[i])
             Xh.append([fh[j] for j in self.keep])
@@ -133,9 +171,14 @@ class CmriTwin:
         self.h.fit(Xh, yh)
         self.fitted = True
 
-    def step(self, t1, th, t_out, dew, load, lux, wind, ghi) -> tuple[float, float]:
-        fk = self._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
-        fh = self._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
+    def step(self, t1, th, t_out, dew, load, lux, wind, ghi,
+             t_mass=None) -> tuple[float, float]:
+        if t_mass is None:
+            t_mass = t_out
+        fk = self._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_mass,
+                           self.t_set)
+        fh = self._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_mass,
+                           self.t_set)
         dk = self.k.predict([fk[j] for j in self.keep])
         dh = self.h.predict([fh[j] for j in self.keep])
         return t1 + dk, th + dh
@@ -159,47 +202,53 @@ def selftest() -> None:
     wind = [rng.uniform(0, 8) for _ in range(n)]
     ghi = [700.0 * max(0.0, math.sin(2 * math.pi * (i % 144) / 144)) for i in range(n)]
     dew = [3.0 + 2.0 * math.sin(2 * math.pi * i / 57) for i in range(n)]
+    # Building-fabric state: known EMA smoothing of T_out (tau = 6 h).
+    w_fab = math.exp(-1.0 / 36.0)
+    t_mass = fabric_mass(t_out, w_fab)
 
-    # True coupled system.  Coefficient arrays are in OLS output layout
-    # [bias, env, wind, solar, coupling, dewpoint, appliances, lights, stat];
-    # feature definitions follow CmriTwin._k_feats/_h_feats exactly:
-    #   kitchen: (t_out-t1), wind*(t_out-t1), ghi, (th-t1), dew, load/100,
-    #            lux/100, max(T_SET-t1,0)
-    #   house:   (t_out-th), wind*(t_out-th), ghi, (t1-th), dew, load/100,
-    #            lux/100, max(T_SET-th,0)
-    K = [0.004, 0.05, 0.004, 0.00040, 0.02, 0.0015, 0.001, 0.0008, 0.01]
-    H = [0.003, 0.04, 0.003, 0.00030, 0.015, 0.001, 0.0006, 0.0004, 0.007]
+    # True coupled system with fabric mass.  Coefficient arrays are in OLS
+    # output layout [bias, env, wind, solar, coupling, dewpoint, appliances,
+    # lights, thermostat, fabric]; features follow CmriTwin._k_feats/_h_feats
+    # exactly: (t_out-t), wind*(t_out-t), ghi, (t_other-t), dew, load/100,
+    # lux/100, max(T_SET-t,0), (t_mass-t).
+    K = [0.004, 0.05, 0.004, 0.00040, 0.02, 0.0015, 0.001, 0.0008, 0.01, 0.03]
+    H = [0.003, 0.04, 0.003, 0.00030, 0.015, 0.001, 0.0006, 0.0004, 0.007, 0.02]
 
     def step_k(i, t1, th):
         return (K[1] * (t_out[i] - t1) + K[2] * wind[i] * (t_out[i] - t1) + K[3] * ghi[i]
                 + K[4] * (th - t1) + K[5] * dew[i] + K[6] * load[i] / Q_SCALE
-                + K[7] * lux[i] / Q_SCALE + K[8] * max(T_SET - t1, 0.0) + K[0])
+                + K[7] * lux[i] / Q_SCALE + K[8] * max(T_SET - t1, 0.0)
+                + K[9] * (t_mass[i] - t1) + K[0])
 
     def step_h(i, t1, th):
         return (H[1] * (t_out[i] - th) + H[2] * wind[i] * (t_out[i] - th) + H[3] * ghi[i]
                 + H[4] * (t1 - th) + H[5] * dew[i] + H[6] * load[i] / Q_SCALE
-                + H[7] * lux[i] / Q_SCALE + H[8] * max(T_SET - th, 0.0) + H[0])
+                + H[7] * lux[i] / Q_SCALE + H[8] * max(T_SET - th, 0.0)
+                + H[9] * (t_mass[i] - th) + H[0])
 
     t1, th = [20.0], [20.5]
     for i in range(n):
         t1.append(t1[i] + step_k(i, t1[i], th[i]))
         th.append(th[i] + step_h(i, t1[i], th[i]))
     twin = CmriTwin()
-    twin.fit(t1[:-1], th[:-1], t_out[:-1], dew[:-1], load[:-1], lux[:-1], wind[:-1], ghi[:-1])
-    for j in range(9):
+    twin.fit(t1[:-1], th[:-1], t_out[:-1], dew[:-1], load[:-1], lux[:-1], wind[:-1],
+             ghi[:-1], t_mass=t_mass[:-1])
+    for j in range(10):
         assert abs(twin.k.coefs[j] - K[j]) < 1e-5, ("k", j, twin.k.coefs[j], K[j])
         assert abs(twin.h.coefs[j] - H[j]) < 1e-5, ("h", j, twin.h.coefs[j], H[j])
-    # Coupled forward-step consistency.
+    # Coupled forward-step consistency (t_mass passed explicitly).
     a, b = 20.0, 20.4
-    pa, pb = twin.step(a, b, 8.0, 2.0, 300.0, 0.0, 3.0, 400.0)
+    pa, pb = twin.step(a, b, 8.0, 2.0, 300.0, 0.0, 3.0, 400.0, 9.3)
     ea = pa - (a + (K[1] * (8.0 - a) + K[2] * 3 * (8.0 - a) + K[3] * 400.0
                     + K[4] * (b - a) + K[5] * 2.0 + K[6] * 300.0 / Q_SCALE
-                    + K[7] * 0.0 + K[8] * max(T_SET - a, 0.0) + K[0]))
+                    + K[7] * 0.0 + K[8] * max(T_SET - a, 0.0)
+                    + K[9] * (9.3 - a) + K[0]))
     eb = pb - (b + (H[1] * (8.0 - b) + H[2] * 3 * (8.0 - b) + H[3] * 400.0
                     + H[4] * (a - b) + H[5] * 2.0 + H[6] * 300.0 / Q_SCALE
-                    + H[7] * 0.0 + H[8] * max(T_SET - b, 0.0) + H[0]))
+                    + H[7] * 0.0 + H[8] * max(T_SET - b, 0.0)
+                    + H[9] * (9.3 - b) + H[0]))
     assert abs(ea) < 1e-9 and abs(eb) < 1e-9, (ea, eb)
-    print("cmri_twin self-test OK: coupled 2-zone calibration recovers known physics coefficients")
+    print("cmri_twin self-test OK: coupled 2-zone calibration recovers known physics coefficients (+ fabric mass)")
 
 
 if __name__ == "__main__":
