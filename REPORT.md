@@ -171,6 +171,20 @@ Additive drivers on top of the v2 driver set, identical protocol:
 
 The 10-min resync errors are strongly autocorrelated within a day (lag-1 ρ ≈ 0.97), so the naive iid t/DM statistics overstate significance; the honest upper bound is the HAC DM at bw = 1440, which still rejects H0 of equal predictive accuracy at p ≈ 7e-08. **The cmri margin is not sample luck.** Caveat, stated plainly: the margin is small in magnitude (~0.018 °C RMSE, consistent with the 0.043 °C one-step noise floor), and cmri still trails the trivial daily-resync persistence control on RMSE (0.628 vs 0.625) while beating it on MAE/MAPE — the verification proves the edge over the *calibrated single-zone v2* is real, not that it is large.
 
+### 7.6 Where the edge lives: horizon analysis
+
+`verify_horizon.py` re-aggregates the same frozen resync predictions by steps-since-day-anchor (each day is re-anchored, so step index = forecast horizon, 144 steps/day). No re-fitting, no new evaluation — the held-out test is still touched once.
+
+| horizon (steps / hours) | v2 MAE (°C) | cmri MAE (°C) | d = v2−cmri (°C) | cmri win rate |
+|---|---|---|---|---|
+| 0–12 / 0–2 h | 0.0736 | 0.0751 | −0.0015 | 0.258 |
+| 12–36 / 2–6 h | 0.1783 | 0.1810 | −0.0028 | 0.285 |
+| 36–72 / 6–12 h | 0.3179 | 0.3003 | +0.0176 | 0.615 |
+| 72–106 / 12–17.7 h | 0.5389 | 0.5092 | +0.0297 | 0.807 |
+| 106+ / last 6 h | 0.8340 | 0.8146 | +0.0194 | 0.664 |
+
+Sign test on the short/long split (first 2 h vs after): steps 0–11 lose 0.258 (mean d = −0.0015 °C, below the 0.043 °C noise floor); steps 12+ win 0.616 with mean d = +0.0174 °C, one-sided p < 1e-13. **The coupled two-zone structure earns its keep exactly where physics says it should** — the house zone's slower thermal mass keeps the kitchen forecast from drifting at multi-hour horizons; in the first 2 h after a re-anchor both twins are still dominated by the anchor, and there cmri pays a negligible coupling lag. This is the stability mechanism that also drives the free-run win (§7.2).
+
 ## 5. Reproducibility
 
 ```
@@ -181,6 +195,7 @@ python3 experiment_cmri.py         # cmri twin comparison → results/comparison
 python3 cmri_twin.py               # cmri self-test: coupled-coefficient recovery
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
 python3 verify_significance.py     # paired test: is cmri's win over v2 real? (HAC DM)
+python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
