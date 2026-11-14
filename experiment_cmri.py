@@ -57,10 +57,19 @@ DATA = ROOT / "data" / "energydata_complete.csv"
 # resync noise.  wind and clear-sky solar are dropped from both zone equations
 # (unstable on this dataset).  Test data is NEVER used for selection or tuning.
 # ---------------------------------------------------------------------------
+# Slow second fabric capacitor (driver 9): EMA weight w2 for T_mass2,
+# tau2 = 12 h (w2 = exp(-600/43200) = e^(-1/72) ~ 0.9862).  Frozen winner of
+# select_cv_slowfab.py, the within-train prequential CV over two-timescale
+# fabric configs: 9-driver mask, t_set 21, alpha 300, w2 0.986 (12 h).  It
+# beats the fabric-only config within train on BOTH resync (0.6057 vs 0.6254)
+# and free-run (0.7499 vs 0.9012), so it earns the single fresh held-out
+# evaluation.  CMRI_KEEP is this same CV winner: env, coupl, dew, appl, light,
+# thermo, fast fabric, slow fabric.
 CMRI_ALPHA = 300.0
 CMRI_T_SET = 21.0
 CMRI_W = 0.944  # fabric-mass EMA smoothing weight (tau = 3 h), see fabric_mass
-CMRI_KEEP = (0, 3, 4, 5, 6, 7, 8)  # env, cpl, dew, appl, light, thermo, fabric
+CMRI_KEEP = (0, 3, 4, 5, 6, 7, 8, 9)  # env,cpl,dew,appl,light,therm,fab,slowfab
+CMRI_W2 = 0.986  # slow fabric EMA weight (tau2 = 12 h); None = single-fabric
 
 # ---------------------------------------------------------------------------
 # Data loading (full sensor panel + weather + computed GHI)
@@ -103,7 +112,8 @@ def run_protocol_cmri(twin, state, recs, resync_days):
     """Step a two-zone twin over records; return kitchen predictions.
 
     recs: list of (T1_obs, Th_obs, t_out, Tdewpoint, Appliances, lights,
-                   Windspeed, GHI, T_mass).
+                   Windspeed, GHI, T_mass) -- optionally a 10th entry T_mass2
+                   (slow fabric state) for two-timescale driver-set selection.
     resync_days: list of index-lists (one per day), or None for free-run.
     state: initial observed (T1, Th).
     Returns kitchen pred list of len(recs); None where no prediction exists
@@ -114,15 +124,19 @@ def run_protocol_cmri(twin, state, recs, resync_days):
     if resync_days is None:
         t1, th = state
         for j in range(1, n):
-            _, _, t_out, dew, load, lux, wind, ghi, tm = recs[j - 1]
-            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm)
+            r = recs[j - 1]
+            _, _, t_out, dew, load, lux, wind, ghi, tm, *rest = r
+            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm,
+                               rest[0] if rest else None)
             pred[j] = t1
         return pred
     for day in resync_days:
         t1, th = recs[day[0]][0], recs[day[0]][1]
         for a, b in zip(day[:-1], day[1:]):
-            _, _, t_out, dew, load, lux, wind, ghi, tm = recs[a]
-            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm)
+            r = recs[a]
+            _, _, t_out, dew, load, lux, wind, ghi, tm, *rest = r
+            t1, th = twin.step(t1, th, t_out, dew, load, lux, wind, ghi, tm,
+                               rest[0] if rest else None)
             pred[b] = t1
     return pred
 
@@ -142,7 +156,7 @@ def days_of(dates, off, end=None):
 
 
 class CmriVariant:
-    """Two-zone twin using only a subset of the 9 cmri drivers (both zones)."""
+    """Two-zone twin using only a subset of the 10 cmri drivers (both zones)."""
 
     def __init__(self, keep: tuple[int, ...]):
         self.keep = keep
@@ -150,13 +164,15 @@ class CmriVariant:
         self.h = LinearModel()
 
     def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi, t_mass,
-            t_set=CMRI_T_SET):
+            t_mass2=None, t_set=CMRI_T_SET):
         Xk, yk, Xh, yh = [], [], [], []
         for i in range(len(T1) - 1):
             fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
-                                   lux[i], wind[i], ghi[i], t_mass[i], t_set)
+                                   lux[i], wind[i], ghi[i], t_mass[i], t_set,
+                                   None if t_mass2 is None else t_mass2[i])
             fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
-                                   lux[i], wind[i], ghi[i], t_mass[i], t_set)
+                                   lux[i], wind[i], ghi[i], t_mass[i], t_set,
+                                   None if t_mass2 is None else t_mass2[i])
             Xk.append([fk[j] for j in self.keep])
             yk.append(T1[i + 1] - T1[i])
             Xh.append([fh[j] for j in self.keep])
@@ -165,20 +181,21 @@ class CmriVariant:
         self.h.fit(Xh, yh)
 
     def step(self, t1, th, t_out, dew, load, lux, wind, ghi, t_mass,
-             t_set=CMRI_T_SET):
+             t_mass2=None, t_set=CMRI_T_SET):
         fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi,
-                               t_mass, t_set)
+                               t_mass, t_set, t_mass2)
         fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi,
-                               t_mass, t_set)
+                               t_mass, t_set, t_mass2)
         return (t1 + self.k.predict([fk[j] for j in self.keep]),
                 th + self.h.predict([fh[j] for j in self.keep]))
 
 
 # Feature indices (both zone equations): 0 env, 1 wind, 2 solar, 3 coupling,
-# 4 dewpoint, 5 appliances, 6 lights, 7 thermostat, 8 fabric mass (T_mass-T).
-# Bias added by LinearModel.  Ordered additive chain for the ablation table:
-# v2 drivers -> +thermostat -> +coupling -> +fabric mass -> +wind -> +solar
-# -> full 9-driver cmri model.
+# 4 dewpoint, 5 appliances, 6 lights, 7 thermostat, 8 fabric mass (T_mass-T),
+# 9 slow fabric mass (T_mass2-T).  Bias added by LinearModel.  Ordered additive
+# chain for the ablation table: v2 drivers -> +thermostat -> +coupling
+# -> +fabric mass -> +wind -> +solar -> full 9-driver cmri model; a slow-fabric
+# row is appended only once CMRI_W2 is frozen (two-timescale fabric config).
 ABLATIONS = [
     # (short name, keep-features, human driver description)
     ("v2_drivers", (0, 4, 5, 6), "envelope + Tdewpoint + appliances + lights"),
@@ -189,6 +206,9 @@ ABLATIONS = [
     ("cmri_full", (0, 1, 2, 3, 4, 5, 6, 7, 8),
      " + clear-sky solar GHI (full 9-driver cmri model)"),
 ]
+if CMRI_W2 is not None:
+    ABLATIONS.append(("plus_slowfab", (0, 3, 4, 5, 6, 7, 8, 9),
+                      " + slow fabric mass (T_mass2-T, second capacitor)"))
 
 
 # ---------------------------------------------------------------------------
@@ -278,14 +298,19 @@ def run() -> None:
 
     recs5 = list(zip(T, t_out, dew, load, lux))
     tm = fabric_mass(t_out, CMRI_W)
-    recs8 = list(zip(T, T_h, t_out, dew, load, lux, wind, ghi, tm))
+    tm2 = None if CMRI_W2 is None else fabric_mass(t_out, CMRI_W2)
+    # recs carry t_mass2 as an optional 10th entry; run_protocol_cmri unpacks
+    # with *rest so 9-tuples (t_mass2=None) stay the frozen-config path.
+    recs8 = list(zip(T, T_h, t_out, dew, load, lux, wind, ghi, tm)) if tm2 is None \
+        else list(zip(T, T_h, t_out, dew, load, lux, wind, ghi, tm, tm2))
 
     test_days = days_of(dates, split)
     train_days = days_of(dates, 0, split)
 
     def fit_arrays(lo, hi):
         s = slice(lo, hi)
-        return (T[s], T_h[s], t_out[s], dew[s], load[s], lux[s], wind[s], ghi[s], tm[s])
+        base = (T[s], T_h[s], t_out[s], dew[s], load[s], lux[s], wind[s], ghi[s], tm[s])
+        return base if tm2 is None else base + (tm2[s],)
 
     # ---- calibrate on TRAINING ONLY (config = frozen CV winner) ----
     cmri = CmriTwin(alpha=CMRI_ALPHA, t_set=CMRI_T_SET, keep=CMRI_KEEP)
@@ -387,7 +412,7 @@ def run() -> None:
                  "solar gain (C per W/m^2 per step)", "coupling gain (C per dT-step)",
                  "dewpoint latent gain", "appliance heat gain (per 100 W)",
                  "lights heat gain (per 100 W)", "thermostat gain (C per max(Tsp-T,0)-step)",
-                 "fabric-mass gain (C per dT-step)"]
+                 "fabric-mass gain (C per dT-step)", "slow fabric-mass gain (C per dT-step)"]
         # coefs layout = [bias, kept-driver coefs...]; kept drivers follow
         # CMRI_KEEP order; names/roles come from the full 9-driver layout.
         def write_zone(zone, coefs, names):

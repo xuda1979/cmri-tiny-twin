@@ -1,17 +1,19 @@
 zone,coefficient,value,role
-kitchen,bias,0.031891,bias (C/step)
-kitchen,env (T_out-T1),0.006736,envelope gain (C per dT-step)
-kitchen,coupl (Th-T1),0.00093,coupling gain (C per dT-step)
-kitchen,Tdewpoint,-0.001684,dewpoint latent gain
-kitchen,appliances/100,0.012249,appliance heat gain (per 100 W)
-kitchen,lights/100,0.048591,lights heat gain (per 100 W)
-kitchen,"thermostat max(Tsp-T1,0)",-6.8e-05,"thermostat gain (C per max(Tsp-T,0)-step)"
-kitchen,fabric mass (Tmass-T1),-0.004114,fabric-mass gain (C per dT-step)
-house,bias,-0.004157,bias (C/step)
-house,env (T_out-Th),0.005235,envelope gain (C per dT-step)
-house,coupl (T1-Th),-0.001744,coupling gain (C per dT-step)
-house,Tdewpoint,0.000104,dewpoint latent gain
-house,appliances/100,0.008126,appliance heat gain (per 100 W)
-house,lights/100,0.049476,lights heat gain (per 100 W)
-house,"thermostat max(Tsp-Th,0)",0.001161,"thermostat gain (C per max(Tsp-T,0)-step)"
-house,fabric mass (Tmass-Th),-0.004848,fabric-mass gain (C per dT-step)
+kitchen,bias,0.010031,bias (C/step)
+kitchen,env (T_out-T1),0.005978,envelope gain (C per dT-step)
+kitchen,coupl (Th-T1),0.003099,coupling gain (C per dT-step)
+kitchen,Tdewpoint,-0.000826,dewpoint latent gain
+kitchen,appliances/100,0.01201,appliance heat gain (per 100 W)
+kitchen,lights/100,0.045959,lights heat gain (per 100 W)
+kitchen,"thermostat max(Tsp-T1,0)",0.000186,"thermostat gain (C per max(Tsp-T,0)-step)"
+kitchen,fabric mass (Tmass-T1),-0.001692,fabric-mass gain (C per dT-step)
+kitchen,slow fabric mass (Tmass2-T1),-0.003116,slow fabric-mass gain (C per dT-step)
+house,bias,-0.002036,bias (C/step)
+house,env (T_out-Th),0.005312,envelope gain (C per dT-step)
+house,coupl (T1-Th),-0.001658,coupling gain (C per dT-step)
+house,Tdewpoint,2e-05,dewpoint latent gain
+house,appliances/100,0.008149,appliance heat gain (per 100 W)
+house,lights/100,0.049723,lights heat gain (per 100 W)
+house,"thermostat max(Tsp-Th,0)",0.001142,"thermostat gain (C per max(Tsp-T,0)-step)"
+house,fabric mass (Tmass-Th),-0.005086,fabric-mass gain (C per dT-step)
+house,slow fabric mass (Tmass2-Th),0.000303,slow fabric-mass gain (C per dT-step)

@@ -5,3 +5,4 @@ plus_coupl, + inter-zone coupling (Th-T1),0.6423,0.4521,0.798,1.938,-0.0064,5879
 plus_fab, + building-fabric mass (T_mass-T),0.5486,0.3984,0.8526,1.709,-0.0937,5879
 plus_wind, + wind infiltration wind*(T_out-T),0.5661,0.4066,0.843,1.744,+0.0175,5879
 cmri_full, + clear-sky solar GHI (full 9-driver cmri model),0.6408,0.4345,0.7989,1.867,+0.0747,5879
+plus_slowfab," + slow fabric mass (T_mass2-T, second capacitor)",0.5526,0.4098,0.8505,1.76,-0.0882,5879
