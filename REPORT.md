@@ -156,6 +156,21 @@ Additive drivers on top of the v2 driver set, identical protocol:
 - The gain is small at the 10-min daily-resync horizon — consistent with the one-step noise floor (0.043 °C) showing the residual is mostly unpredicted intraday detail — but free-run robustness is the *structurally meaningful* win: coupling is a stability mechanism.
 - All artifacts regenerate from `python3 experiment_cmri.py` and `python3 cmri_twin.py`; every coefficient is OLS-fitted on the training block, nothing touched the held-out test until the single frozen evaluation.
 
+### 7.5 Is the win real? Paired statistical verification
+
+`verify_significance.py` re-scores the paired absolute losses already written to `results/predictions_cmri.csv` (no new test evaluation — the held-out test has been used once). Per sample, d = |e_v2| − |e_cmri| over the n = 5879 resync steps, with mean d = +0.0158 °C:
+
+| test | statistic | result | p |
+|---|---|---|---|
+| sign (binomial) on win rate 0.582 (3424/2409/46) | z | 12.62 | < 1e-16 |
+| paired t (normal approx, df 5878) | t | 33.71 | < 1e-16 |
+| Diebold–Mariano, iid steps | DM | 33.71 | < 1e-16 |
+| **DM, Newey–West HAC bw = 576 (4 days)** | DM | 4.69 | 2.8e-06 |
+| **DM, Newey–West HAC bw = 1440 (10 days)** | DM | 5.38 | 7.4e-08 |
+| per-day win (mean \|err\| per calendar day) | — | 33/42 days | — |
+
+The 10-min resync errors are strongly autocorrelated within a day (lag-1 ρ ≈ 0.97), so the naive iid t/DM statistics overstate significance; the honest upper bound is the HAC DM at bw = 1440, which still rejects H0 of equal predictive accuracy at p ≈ 7e-08. **The cmri margin is not sample luck.** Caveat, stated plainly: the margin is small in magnitude (~0.018 °C RMSE, consistent with the 0.043 °C one-step noise floor), and cmri still trails the trivial daily-resync persistence control on RMSE (0.628 vs 0.625) while beating it on MAE/MAPE — the verification proves the edge over the *calibrated single-zone v2* is real, not that it is large.
+
 ## 5. Reproducibility
 
 ```
@@ -165,6 +180,7 @@ python3 ablation.py                # driver ablation → results/ablation.{csv,m
 python3 experiment_cmri.py         # cmri twin comparison → results/comparison_cmri.md
 python3 cmri_twin.py               # cmri self-test: coupled-coefficient recovery
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
+python3 verify_significance.py     # paired test: is cmri's win over v2 real? (HAC DM)
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
