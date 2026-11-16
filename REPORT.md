@@ -229,6 +229,8 @@ Both zone equations are OLS-fitted on the training block alone (`experiment_cmri
 
 **4. Failure episodes.** cmri's worst single step is 2.008 °C on 2016-04-29 21:20 — but v2 fails in near-lockstep there (+2.207 vs +2.008; a cold night, T_out ≈ 6.7 °C, appliance-load spike ≈ 780 W, *both* blanch on physical conditions either model's drivers represent poorly). v2's worst episode is the more interesting one: five of its top-10 worst steps land on 2016-05-07 22:00–23:50 (a warm, unoccupied Saturday, T_out ≈ 18.5 °C), where v2's error reaches **−2.70 °C while cmri stays at −0.85 °C** — the coupled + slow-mass twin is protected by exactly the structure v2 lacks. Worst full-day means: cmri 2016-04-30 (0.850 °C), v2 2016-04-22 (1.035 °C); cmri's best days reach 0.056 °C (2016-04-16).
 
+**5. The structural claims survive the honest day-block test.** The per-step win rates of items 2/3 overstate significance (within-day lag-1 ρ ≈ 0.99), so each claim is re-tested with whole-day blocks exactly as §5.5/§5.6 do (per-day mean paired d within the band, binomial sign test). By clock-hour band the **evening 18–23 h is the only band that separates at day level: cmri better 30/42 days, z = +2.62, one-sided p = 0.004** (mean day d +0.243 °C); night (24/41, p = 0.17), morning (21/41, p = 0.50) and afternoon (24/42, p = 0.22) are statistically flat — the same condensed-midday reading §5.6 reaches on the horizon bands. The weekday claim is also day-block significant: **23/30 weekdays won, z = +2.74, p = 0.003**, with a day-block bootstrap 95 % CI on the pooled weekday d of **+0.040 to +0.162 °C** (B = 5000) — the weekday margin is not day-to-day luck. And the weekend d = +0.005 °C is honestly *not* separable from zero either (5/12 days, bootstrap 95 % CI −0.111 to +0.152 °C) — so the "the cmri edge is a weekday-evening edge" caveat is itself statistically bounded, not just a pooled-volume observation.
+
 ## 8. Reproducibility
 
 ```
@@ -244,7 +246,7 @@ python3 freerun_diag_train.py     # within-train free-run diagnostic: fits on fi
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
 python3 verify_significance.py     # paired test: is cmri's win over v2 real? (HAC DM)
 python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation (+day-block band tests)
-python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile
+python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile (+day-block band and weekday tests, §7 item 5)
 python3 verify_freerun.py           # free-run day-block paired test + bootstrap CI on mean daily d
 python3 verify_rmse_gap.py           # day-block bootstrap CI on the headline RMSE gap
 python3 verify_persistence.py        # day-block bootstrap CI on the cmri-vs-persistence RMSE gap
@@ -268,7 +270,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `freerun_diag_train.py` | within-train open-loop check: the drift is a seasonal shift, not a model deficit |
 | `verify_significance.py` | paired statistical test of cmri's win over v2 (HAC DM) |
 | `verify_horizon.py` | horizon-split re-aggregation of frozen resync predictions (per-band day-block sign tests) |
-| `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile of frozen predictions |
+| `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile (+day-block band & weekday tests, §7 item 5) |
 | `verify_freerun.py` | free-run day-block paired test + bootstrap CI on the mean daily d (§5.2) |
 | `verify_rmse_gap.py` | day-block bootstrap CI on the headline RMSE gap (pooled + per-day t) |
 | `verify_persistence.py` | day-block bootstrap CI on the cmri-vs-persistence RMSE gap (pooled + per-day t) |

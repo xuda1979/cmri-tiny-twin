@@ -24,9 +24,25 @@ Sections:
 import csv
 import datetime as dt
 import math
+import random
 import statistics
 
 PRED = "results/predictions_cmri.csv"
+SEED = 42
+B = 5000
+
+
+def phi(z: float) -> float:
+    """Standard normal CDF (via erff, pure stdlib)."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def sign_test(wins: int, n: int) -> tuple[float, float]:
+    """Binomial sign test on counts of positive paired d, normal approx."""
+    mu = n / 2.0
+    sd = math.sqrt(n / 4.0)
+    z = (wins - 0.5 - mu) / sd  # continuity correction
+    return z, 1.0 - phi(z)      # one-sided H1: P(d>0) > 0.5
 
 
 def main() -> None:
@@ -142,6 +158,64 @@ def main() -> None:
         (wins if dm > 0 else losses).append(dm)
     print(f"\nday-level: cmri wins {len(wins)} days (mean margin +{statistics.fmean(wins):.3f} C),"
           f" v2 wins {len(losses)} (mean margin {statistics.fmean(losses):+.3f} C)")
+
+    # 5. Honest (day-block) significance of the phase and weekday claims.  The
+    # per-step win rates and pooled d above overstate significance — residuals
+    # have lag-1 rho ~ 0.99 within a day — so each claim gets the same whole-day
+    # blocking this repo uses everywhere else (cf. verify_horizon.py / the RMSE
+    # gap scripts): the calendar day is the only defensible independence unit.
+    # For band B, per-day mean paired d = mean|e_v2| - mean|e_cmri| over B's
+    # steps, then a sign test on which days have positive d.
+    print("\nday-block sign test per day-phase band (whole-day blocks = honest unit):")
+    for lo, hi, label in phases:
+        by_day: dict[dt.date, list[float]] = {}
+        for d, e2, ec in rows:
+            if lo <= d.hour < hi:
+                by_day.setdefault(d.date(), []).append(abs(e2) - abs(ec))
+        m = [statistics.fmean(dd) for dd in by_day.values()]
+        w = sum(1 for x in m if x > 1e-12)
+        z, p = sign_test(w, len(m))
+        print(f"  {label:<18} {len(m):>3} days  cmri better {w:>2}  "
+              f"mean day d {statistics.fmean(m):+.4f}  sign z {z:+.2f}  "
+              f"one-sided p {p:.3f}")
+
+    # Weekday vs weekend day blocks: sign test per class, plus a day-block
+    # bootstrap 95% CI on the pooled within-class mean paired d.  Both are
+    # paired (|e_v2|-|e_cmri| per step), so a positive pooled d is a cmri win.
+    print("\nweekday vs weekend — day-block sign tests + bootstrap CI "
+          "on pooled mean paired d:")
+    wd_days: dict[dt.date, list[float]] = {}
+    we_days: dict[dt.date, list[float]] = {}
+    for d, e2, ec in rows:
+        dd = [abs(e2) - abs(ec)]
+        (wd_days if d.weekday() < 5 else we_days).setdefault(d.date(), []).extend(dd)
+    for lab, D in [("weekday", wd_days), ("weekend", we_days)]:
+        keys = sorted(D)
+        m = [statistics.fmean(D[k]) for k in keys]
+        w = sum(1 for x in m if x > 1e-12)
+        z, p = sign_test(w, len(m))
+        rng = random.Random(SEED)
+        means = []
+        for _ in range(B):
+            s = [m[rng.randrange(len(m))] for _ in range(len(m))]
+            means.append(statistics.fmean(s))
+        means.sort()
+        lo, hi = means[int(B * 0.025)], means[int(B * 0.975)]
+        mm = statistics.fmean(m)
+        se = (statistics.pstdev(m) / math.sqrt(len(m) - 1)) if len(m) > 1 else math.nan
+        print(f"  {lab} ({len(keys)} days): cmri better {w} days  "
+              f"pooled mean d {mm:+.4f}  sign z {z:+.2f} (p {p:.3f})  "
+              f"bootstrap 95% CI [{lo:+.4f}, {hi:+.4f}]")
+
+    # Cross-check the committed 87.6% evening share of total paired-d.
+    band_d = {}
+    for lo, hi, label in phases:
+        band_d[label] = sum(abs(e2) - abs(ec) for d, e2, ec in rows
+                            if lo <= d.hour < hi)
+    share = band_d["evening 18-23h"] / sum(band_d.values())
+    print(f"\nevening (18-23h) share of total paired-d across all phases: "
+          f"{share:.3f} (committed value 0.876) — cross-check "
+          f"{'PASS' if abs(share - 0.876) < 0.005 else 'FAIL'}")
 
     # Overall paired mean d across every step.
     print(f"\noverall paired d = |e_v2|-|e_cmri|: mean {statistics.fmean(dd_all):+.4f} C"
