@@ -179,6 +179,8 @@ Additive drivers on top of the v2 driver set, identical protocol:
 
 The 10-min resync errors are strongly autocorrelated within a day (lag-1 ρ ≈ 0.97), so the naive iid t/DM statistics overstate significance; the honest upper bound is the HAC DM at bw = 1440, which still rejects H0 of equal predictive accuracy at p ≈ 3.5e-03. **The cmri margin is not sample luck.** The margin is thinner than the single-fabric config (mean d +0.1000 → +0.0713 °C, win rate 0.676 → 0.579) — the honest price of the free-run fix — but it remains significant by the strictest autocorrelation-corrected test, and cmri also beats the daily-resync persistence control on RMSE (0.531 vs 0.625). The §5.6 horizon analysis shows where the surviving edge lives.
 
+The headline RMSE number itself (Δ = +0.1153 °C) carries an uncertainty bound (`verify_rmse_gap.py`). The tests above operate on the MAE-loss differential; for the RMSE metric the same day-block discipline applies — resample whole resync days and recompute the pooled gap. Day-block bootstrap (B = 5000): 95 % percentile CI **+0.031 to +0.206 °C**, P(gap > 0) = 0.998. The per-day paired gap series (42 days) agrees: mean +0.0985, se 0.0370, t = +2.66 (normal-approx 95 % CI +0.026 to +0.171). The CI width (~0.17 °C) is honest about day-to-day variance, but the margin does not straddle zero — under both procedures the squared-error win is significant, matching the HAC-DM rejection on the mean.
+
 ### 5.6 Where the edge lives: horizon analysis
 
 `verify_horizon.py` re-aggregates the same frozen resync predictions by steps-since-day-anchor (each day is re-anchored, so step index = forecast horizon, 144 steps/day). No re-fitting, no new evaluation — the held-out test is still touched once.
@@ -240,6 +242,7 @@ python3 verify_significance.py     # paired test: is cmri's win over v2 real? (H
 python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation
 python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile
 python3 verify_freerun.py           # free-run day-block paired test: does the open-loop win separate?
+python3 verify_rmse_gap.py           # day-block bootstrap CI on the headline RMSE gap
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
@@ -262,6 +265,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `verify_horizon.py` | horizon-split re-aggregation of frozen resync predictions |
 | `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile of frozen predictions |
 | `verify_freerun.py` | free-run day-block paired test: does the open-loop win separate statistically? |
+| `verify_rmse_gap.py` | day-block bootstrap CI on the headline RMSE gap (pooled + per-day t) |
 | `results/comparison.md` | generated comparison write-up (tables + verdict) |
 | `results/metrics.csv` | full metrics matrix (test/free-run/train/floor) |
 | `results/ablation.md` | ablation tables + reading |
