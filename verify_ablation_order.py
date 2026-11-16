@@ -115,8 +115,8 @@ def main() -> None:
             names.append(name)
         prev_rmse = rmse
         print(f"{name:<14} {rmse:.4f}            "
-              f"{'+' if d >= 0 else ''}{d:+.4f}          "
-              f"{'+' if held[name] >= 0 else ''}{held[name]:+.4f}")
+              f"{d:+.4f}          "
+              f"{held[name]:+.4f}")
 
     d_held = [held[k] for k in names]
 

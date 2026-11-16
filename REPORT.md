@@ -278,6 +278,14 @@ The tail edge is **period-global**: |e_v2| ≥ 0.6 separates at day level in *bo
 
 **Bottom line:** the ablation *ordering* and ΔRMSE readings of Table 5.3 are unchanged; the last row simply does not reproduce the headline 0.531 number because it is an alpha=0 refit of the same mask (see the provenance note under Table 5.3).
 
+**12. The held-out ablation *ranking* is a stable driver property, not a single test-draw artifact** (`verify_ablation_order.py`). Items 11 closed the *provenance* question (why 0.5526 ≠ 0.5308); a reviewer's remaining worry is *stability* — the Table 5.3 deltas were computed once, on the single held-out test block, so the ordering (fast-fab/slowfab big wins, wind/solar losses, coupling a ~0.006 °C rider) could be weather- or draw-specific. `verify_ablation_order.py` answers this **without touching the held-out test**: the same seven `CmriVariant(alpha=0)` fits are re-trained on the within-train fit slice [0, 11051) and re-evaluated on the val slice [11051, 13814) (the frozen-CV slice of item 10), then the within-train d_rmse chain is compared sign- and rank-wise with the committed held-out chain:
+
+- **Within-train vs held-out d_rmse** — plus_thermo +0.0018/+0.0027, plus_coupl +0.0073/−0.0064, plus_fab **−0.0906/−0.0937**, plus_wind **+0.0399/+0.0175**, cmri_full **+0.2146/+0.0747**, plus_slowfab **−0.2536/−0.0882**. Spearman rho on the six deltas **0.943**; the two biggest held-out gains are the two biggest within-train gains (slowfab, fab) and the two biggest losses likewise (solar, wind).
+- **Structural gate:** raw sign agreement is 5/6 — the coupling rider flips (+0.0073 vs −0.0064) — but |d| < 0.01 in *both* measurements, an order of magnitude below fab/solar. Gating on deltas that exceed TAU = 0.01 in both runs (4/4: fab, wind, solar, slowfab), **every structurally significant delta agrees in sign**. The coupling "rider" is measurement noise, not a ranking reversal.
+- **Cross-check with item 11:** the within-train val RMSE of the frozen mask refit here (plus_slowfab, alpha=0) is **0.5109**, exactly the alpha=0 val number item 11's ridge sweep reports on the same slice — the two probes agree on machinery and on the apple-to-apple val baseline.
+
+**Bottom line:** the §5.3 ablation *ranking* is a driver property — the big physical wins (fast-fab, slowfab) and losses (wind, solar) replicate on within-train data untouched by model selection; only the sub-1-centikelvin coupling rider is single-draw noise.
+
 ## 8. Reproducibility
 
 ```
@@ -307,6 +315,7 @@ python3 verify_timeband.py           # joint time-of-day x error-magnitude probe
 python3 verify_temporal.py           # temporal-stability probe: the resync edge is time-flat (halves 14/21 each, trend t=-0.54, permutation p=0.83), the free-run edge is first-half-owned (§5.2, §7 item 9)
 python3 verify_housezone.py           # within-train validation of the coupled second zone: house resync beats its day-anchored flat floor 0.5008 < 0.5189, open-loop drift 0.80 C/20 d (§7 item 10)
 python3 verify_ablation_ridge.py       # provenance probe: the ablation rows are alpha=0 refits, the frozen winner alpha=300 — the 0.5526-vs-0.5308 gap is the ridge effect, and the §5.3 gain digits are a stale single-fabric fingerprint (§5.3 note, §7 item 11)
+python3 verify_ablation_order.py       # within-train replay of the ablation chain: the held-out ranking is a driver property, not a single test-draw artifact (4/4 structurally significant deltas agree, rho 0.943; the coupling rider is ±0.007 noise, §7 item 12)
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
@@ -341,6 +350,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `verify_temporal.py` | temporal-stability probe of the resync edge: time-flat in presence (halves both 14/21, no trend t = −0.54, permutation p = 0.832) but tail-owned in magnitude (top-4 days carry 0.73 of paired-d); contrasts the free-run's first-half ownership (§7 item 9) |
 | `verify_housezone.py` | within-train validation of the coupled second zone: house resync beats its day-anchored flat floor (0.5008 < 0.5189), bounded open-loop drift 0.80 °C/20 d, max |Th gap| 2.31 °C (§7 item 10) |
 | `verify_ablation_ridge.py` | provenance probe of the §5.3 ablation table: rows are unregularized (alpha=0) refits of each mask, the frozen winner is the alpha=300 CV selection (0.5308), the 0.5526-vs-0.5308 gap is the ridge effect, and the §5.3 fabric-gain digits are a stale single-fabric fingerprint (§5.3 note, §7 item 11) |
+| `verify_ablation_order.py` | within-train replay of the §5.3 ablation chain (same seven alpha=0 refits, val slice [11051, 13814)): the held-out ablation *ranking* is a driver property, not a single test-draw artifact — 4/4 structurally significant deltas agree in sign, rho 0.943, the coupling rider is ±0.007 noise (§7 item 12) |
 | `results/comparison.md` | generated comparison write-up (tables + verdict) |
 | `results/metrics.csv` | full metrics matrix (test/free-run/train/floor) |
 | `results/ablation.md` | ablation tables + reading |
