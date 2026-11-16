@@ -46,9 +46,9 @@ class KnobTwin:
         Xk, yk, Xh, yh = [], [], [], []
         for i in range(len(T1) - 1):
             fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
-                                   lux[i], wind[i], ghi[i], self.t_set)
+                                   lux[i], wind[i], ghi[i], t_out[i], self.t_set)
             fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i],
-                                   lux[i], wind[i], ghi[i], self.t_set)
+                                   lux[i], wind[i], ghi[i], t_out[i], self.t_set)
             Xk.append([fk[j] for j in self.mask_k])
             yk.append(T1[i + 1] - T1[i])
             Xh.append([fh[j] for j in self.mask_h])
@@ -57,8 +57,8 @@ class KnobTwin:
         self.h.fit(Xh, yh)
 
     def step(self, t1, th, t_out, dew, load, lux, wind, ghi):
-        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
-        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
+        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_out, self.t_set)
+        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_out, self.t_set)
         return (t1 + self.k.predict([fk[j] for j in self.mask_k]),
                 th + self.h.predict([fh[j] for j in self.mask_h]))
 
@@ -136,8 +136,8 @@ def run() -> None:
     results.sort(key=lambda r: r[1])
     print("\n=== top by resync-OBS RMSE (v2 baseline 0.6460, persistence 0.6246) ===")
     for r in results[:8]:
-        print(f"  res_sim={r[0]:.4f} res_obs={r[1]:.4f} freerun={r[3]:.4f} "
-              f"mask={r[4]:>6} tset={r[5]:4.1f} alpha={r[6]:>6.0f}")
+        print(f"  res_sim={r[0]:.4f} res_obs={r[1]:.4f} freerun={r[2]:.4f} "
+              f"mask={r[3]:>6} tset={r[4]:4.1f} alpha={r[5]:>6.0f}")
     results.sort(key=lambda r: r[2])
     print("\n=== top by free-run RMSE ===")
     for r in results[:8]:

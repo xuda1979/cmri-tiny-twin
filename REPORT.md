@@ -275,6 +275,9 @@ python3 experiment_cmri.py         # cmri twin comparison → results/comparison
 python3 cmri_twin.py               # cmri self-test: coupled-coefficient recovery
 python3 select_cv.py               # within-train prequential CV → frozen winner (mask nws+fab)
 python3 select_cv_slowfab.py      # within-train CV for the slow second capacitor (w2/τ2 ≈ 12 h)
+python3 grid_knobs.py            # diagnostic config sweep (legacy 8-driver exploration, superseded by select_cv.py)
+python3 select_config.py          # within-train val-slice config selection (8-driver era, superseded by select_cv.py)
+python3 select_config2.py         # within-train selection + momentum driver (superseded by the fabric-mass driver)
 python3 diagnose_freerun.py       # held-out free-run drift diagnosis (seasonal level-shift)
 python3 freerun_diag_train.py     # within-train free-run diagnostic: fits on first X, runs the rest
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
@@ -305,6 +308,9 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `cmri_twin.py` | cmri twin: coupled two-zone RC + fabric mass, OLS-calibrated |
 | `select_cv.py` | within-train prequential CV: freezes the cmri config |
 | `select_cv_slowfab.py` | within-train CV: selects the slow fabric capacitor (w2, τ2 ≈ 12 h) |
+| `select_config.py` | legacy within-train val-slice config selection (8-driver era; superseded by select_cv.py) |
+| `select_config2.py` | legacy within-train selection with a momentum driver; superseded by the fabric-mass driver |
+| `grid_knobs.py` | diagnostic config sweep over masks/ridge/setpoint (diagnostic, not a result; superseded by select_cv.py) |
 | `diagnose_freerun.py` | held-out free-run drift diagnosis (lead/lag, seasonal level shift) |
 | `freerun_diag_train.py` | within-train open-loop check: the drift is a seasonal shift, not a model deficit |
 | `verify_significance.py` | paired statistical test of cmri's win over v2 (HAC DM) |

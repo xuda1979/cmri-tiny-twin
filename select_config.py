@@ -35,8 +35,8 @@ class KnobTwin:
     def fit(self, T1, Th, t_out, dew, load, lux, wind, ghi):
         Xk, yk, Xh, yh = [], [], [], []
         for i in range(len(T1) - 1):
-            fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], self.t_set)
-            fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], self.t_set)
+            fk = CmriTwin._k_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], t_out[i], self.t_set)
+            fh = CmriTwin._h_feats(T1[i], Th[i], t_out[i], dew[i], load[i], lux[i], wind[i], ghi[i], t_out[i], self.t_set)
             Xk.append([fk[j] for j in self.mask_k])
             yk.append(T1[i + 1] - T1[i])
             Xh.append([fh[j] for j in self.mask_h])
@@ -45,8 +45,8 @@ class KnobTwin:
         self.h.fit(Xh, yh)
 
     def step(self, t1, th, t_out, dew, load, lux, wind, ghi):
-        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
-        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, self.t_set)
+        fk = CmriTwin._k_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_out, self.t_set)
+        fh = CmriTwin._h_feats(t1, th, t_out, dew, load, lux, wind, ghi, t_out, self.t_set)
         return (t1 + self.k.predict([fk[j] for j in self.mask_k]),
                 th + self.h.predict([fh[j] for j in self.mask_h]))
 
