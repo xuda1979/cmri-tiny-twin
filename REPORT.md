@@ -231,6 +231,19 @@ Both zone equations are OLS-fitted on the training block alone (`experiment_cmri
 
 **5. The structural claims survive the honest day-block test.** The per-step win rates of items 2/3 overstate significance (within-day lag-1 ρ ≈ 0.99), so each claim is re-tested with whole-day blocks exactly as §5.5/§5.6 do (per-day mean paired d within the band, binomial sign test). By clock-hour band the **evening 18–23 h is the only band that separates at day level: cmri better 30/42 days, z = +2.62, one-sided p = 0.004** (mean day d +0.243 °C); night (24/41, p = 0.17), morning (21/41, p = 0.50) and afternoon (24/42, p = 0.22) are statistically flat — the same condensed-midday reading §5.6 reaches on the horizon bands. The weekday claim is also day-block significant: **23/30 weekdays won, z = +2.74, p = 0.003**, with a day-block bootstrap 95 % CI on the pooled weekday d of **+0.040 to +0.162 °C** (B = 5000) — the weekday margin is not day-to-day luck. And the weekend d = +0.005 °C is honestly *not* separable from zero either (5/12 days, bootstrap 95 % CI −0.111 to +0.152 °C) — so the "the cmri edge is a weekday-evening edge" caveat is itself statistically bounded, not just a pooled-volume observation.
 
+**6. The edge is tail-owned, not body-owned** (`verify_quantiles.py`). §5.4's "variance-driven" reading — cmri wins by avoiding the big misses, not uniformly — is made precise by grouping the 5,879 resync steps into |e_v2| error-magnitude bands and running the same whole-day-block sign test per band:
+
+| band (by \|e_v2\|, °C) | n | share of total paired-d | mean \|e\| v2 / cmri | mean paired d °C | days won | z / p |
+|---|---:|---:|---:|---:|---:|---|
+| 0–0.2 | 2242 | −0.606 | 0.089 / 0.202 | **−0.113** | 13/42 | −2.62 / 0.996 |
+| 0.2–0.4 | 1156 | −0.025 | 0.288 / 0.297 | −0.009 | 24/42 | +0.77 / 0.220 |
+| 0.4–0.6 | 820 | +0.275 | 0.491 / 0.350 | +0.141 | 29/41 | +2.50 / 0.006 |
+| 0.6–0.9 | 785 | +0.320 | 0.733 / 0.562 | +0.171 | 29/37 | +3.29 / 0.001 |
+| 0.9–1.3 | 551 | +0.433 | 1.085 / 0.755 | +0.329 | 25/30 | +3.47 / <0.001 |
+| 1.3+ | 325 | +0.601 | 1.753 / 0.977 | +0.775 | 14/17 | +2.43 / 0.008 |
+
+The only band where cmri is day-level *worse* is the 0–0.2 °C fast-tracking band (13/42, p = 0.996 one-sided — an honest negative that the pooled mean hides); the 0.2–0.4 °C body band is flat (p = 0.22); every ≥0.4 °C band separates in cmri's favor at day level (p ≤ 0.008) with per-step mean d rising monotonically +0.14 → +0.78 °C. Structurally: the fast-tracking steps (n = 4218, |e_v2| < 0.6) are at parity or slight cmri loss (mean d **−0.035 °C**, win 0.501), while the ≤ 0.6 °C tail (n = 1661) is a decisive cmri win (mean d **+0.342 °C**, win 0.778) and carries **1.4× the total paired-d** (+568 of +419 °C; the body bands are net −149 °C). The tail claim is bounded at day level: the mean of the daily 95th-percentile |err| gaps is **+0.242 °C** (29/42 days, z = +2.31, p = 0.010, bootstrap 95 % CI **+0.100 to +0.399 °C**, t = +3.13) and of the daily 99th-percentile gaps **+0.253 °C** (30/42 days, z = +2.62, p = 0.004, bootstrap 95 % CI **+0.114 to +0.410 °C**, t = +3.28). This is the honest statistical content of "variance over bias": at the level where both twins track well cmri buys nothing (and pays a small, day-block-real toll on the tightest steps), and the entire +0.0713 °C overall margin is earned where tracking would otherwise break — the multi-hour evening ramp of items 2/5 and the close-clipped tail at the 99th percentile (v2 2.10 vs cmri 1.59 °C).
+
 ## 8. Reproducibility
 
 ```
@@ -250,6 +263,7 @@ python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/wo
 python3 verify_freerun.py           # free-run day-block paired test + bootstrap CI on mean daily d
 python3 verify_rmse_gap.py           # day-block bootstrap CI on the headline RMSE gap
 python3 verify_persistence.py        # day-block bootstrap CI on the cmri-vs-persistence RMSE gap
+python3 verify_quantiles.py          # where the edge lives in the error distribution: |e_v2| bands + daily-q tail tests (§7 item 6)
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
@@ -274,6 +288,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `verify_freerun.py` | free-run day-block paired test + bootstrap CI on the mean daily d (§5.2) |
 | `verify_rmse_gap.py` | day-block bootstrap CI on the headline RMSE gap (pooled + per-day t) |
 | `verify_persistence.py` | day-block bootstrap CI on the cmri-vs-persistence RMSE gap (pooled + per-day t) |
+| `verify_quantiles.py` | error-distribution analysis: where the edge lives (|e_v2| bands + daily-q tail tests, §7 item 6) |
 | `results/comparison.md` | generated comparison write-up (tables + verdict) |
 | `results/metrics.csv` | full metrics matrix (test/free-run/train/floor) |
 | `results/ablation.md` | ablation tables + reading |
