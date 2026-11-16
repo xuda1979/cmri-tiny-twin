@@ -25,9 +25,12 @@ period.  Context: diagnose_freerun.py already reported the drift mechanics
 
 import csv
 import math
+import random
 from statistics import fmean
 
 PRED = "results/predictions_cmri.csv"
+SEED = 42
+B = 5000
 
 
 def phi(z: float) -> float:
@@ -68,6 +71,21 @@ def main() -> None:
     print(f"  days cmri better: {wins}/{n}  (wins/losses {wins}/{losses})")
     print(f"  sign test z={z:.2f}  one-sided p={p:.4f}  (H1: cmri wins a majority of days)")
 
+    # Honest CI on the pooled mean daily d: the open-loop run has no re-anchor,
+    # so the day is the only defensible independence block.  Resample the 42
+    # whole days with replacement for a percentile CI on mean daily d.
+    rng = random.Random(SEED)
+    means = []
+    for _ in range(B):
+        s = [d_days[rng.randrange(n)] for _ in range(n)]
+        means.append(fmean(s))
+    means.sort()
+    lo, hi = means[int(B * 0.025)], means[int(B * 0.975)]
+    m = fmean(d_days)
+    se = math.sqrt(sum((x - m) ** 2 for x in d_days) / (n - 1)) / math.sqrt(n)
+    print(f"  mean daily d {m:+.4f} degC  day-block bootstrap 95% CI [{lo:+.4f}, "
+          f"{hi:+.4f}] degC  (B={B}, seed {SEED}); normal-approx se {se:.4f}, "
+          f"t = {m/se:+.2f}")
     # Split the run in half: is the edge uniform or period-owned?
     h = n // 2
     print("\nfirst half vs second half of the 41-day run:")
