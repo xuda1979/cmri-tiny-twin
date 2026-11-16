@@ -248,6 +248,21 @@ The only band where cmri is day-level *worse* is the 0–0.2 °C fast-tracking b
 
 **7. The mean-bias concession is a level offset, not a per-step tracking tax** (`verify_diffclone.py`). §5.4/§7.6 left the pooled running-mean bias (cmri −0.11 vs v2 −0.01 °C/step) ambiguous: does cmri track every day's motion worse, or does the concession come from day-level drifts that mostly cancel in the pooled mean? The frozen errors answer: cmri's within-day error sd is lower on **34/42 days (z = +3.86, p = 0.000; mean daily sd gap +0.078 °C, day-block bootstrap 95 % CI +0.047 to +0.110 °C, t = +4.74)** — the strongest resync-level claim in this report, and the resync mirror of the free-run variance result (§5.2, 30/42, t = +3.51). The within-day RMSE gap also separates at day level — **29/42 days, z = +2.31, p = 0.010, mean +0.0985 °C, bootstrap 95 % CI +0.030 to +0.174 °C, t = +2.66** — reproducing the per-day RMSE series committed in §5.5 exactly (same convention, verify_rmse_gap.py). The per-day *mean-error* contrast, by contrast, does **not** separate: cmri's daily mean error is closer to zero on only 25/42 days (z = +1.08, p = 0.140, bootstrap 95 % CI −0.031 to +0.146 °C) — no day-level tracking loss. And the pooled bias concession is a *signed level offset*: cmri's daily mean errors are *less* variable than v2's (sd 0.329 vs 0.428 °C, §5), and across the biggest daily-drift days cmri's margin runs opposite — on 2016-05-07 (the warm, unoccupied Saturday of §7 item 4) v2's day-mean error is **+0.957 °C while cmri's is −0.006 °C**. The two error series co-move tightly (pooled ρ = 0.753; within-day median ρ = 0.933, > 0.9 on 28/42 days; per-day slope of e_cmri on e_v2 ≈ 0.73) — the models misfire on the same days — while the *day-level drifts* align only loosely (level ρ = 0.557). Reading: cmri pays a day-level mean bias that is mostly a shift in sign across days, not a per-step handicap, and its real resync advantage is the same variance collapse that carries the free-run win.
 
+**8. The "evening-owned" and "tail-owned" readings are the same edge** (`verify_timeband.py`). Items 5 and 6 located the +0.0713 °C edge separately in time (evening 18–23 h, 87.6 % of paired-d) and in the error distribution (|e_v2| ≥ 0.6 tail, 1.4× total paired-d). The joint time-of-day × error-magnitude probe (same frozen columns, same whole-day-block test, band edges matching item 6) closes the open question — does the evening win *because* its error distribution is dominated by large misses, or because the evening *amplifies* the same misses?
+
+| |e_v2| band | period | n | mean d °C | days won | z / p |
+|---|---:|---:|---:|---:|---:|---|
+| 0–0.2 fast | day 0–17h | 2035 | −0.103 | 15/42 | −2.01 / 0.978 |
+| 0–0.2 fast | eve 18–23h | 207 | −0.210 | 6/18 | −1.65 / 0.951 |
+| 0.2–0.4 flat | day | 963 | −0.006 | 22/41 | +0.31 / 0.377 |
+| 0.2–0.4 flat | eve | 193 | −0.024 | 15/26 | +0.59 / 0.278 |
+| 0.4–0.6 mid | day | 603 | +0.142 | 25/36 | +2.17 / 0.015 |
+| 0.4–0.6 mid | eve | 217 | +0.137 | 19/28 | +1.70 / 0.044 |
+| 0.6+ tail | day | 801 | +0.227 | 21/28 | +2.46 / 0.007 |
+| 0.6+ tail | eve | 860 | +0.448 | 26/34 | +2.92 / 0.002 |
+
+The tail edge is **period-global**: |e_v2| ≥ 0.6 separates at day level in *both* periods (day p = 0.007, evening p = 0.002) and the 0.4–0.6 mid band too (p = 0.015 / 0.044), while the body bands are flat or negative in both — including the 0–0.2 °C fast-tracking concession (day p = 0.978, evening p = 0.951), which is a broad body-level tax shared equally by the two periods, not an evening defect. What makes the evening special is, first, **composition**: 860/1477 evening steps (58 %) are ≥ 0.6 °C misses vs 801/4402 daytime steps (18 %) — an evening period that holds 25 % of steps yet delivers 87.6 % of the edge. Second, a modest genuine **amplification**: on the 25 days with both day- and evening-tail steps, the evening-tail per-step margin exceeds the same-day day-tail margin by **+0.19 °C** (19/25 days, z = +2.40, p = 0.008, day-block bootstrap 95 % CI +0.002 to +0.383 °C). The evening's 87.6 % share of total paired-d decomposes as: evening-tail steps alone carry **92.0 %** of all paired-d, day-tail 43.5 %, the mid bands a net +27.6 %, and the body bands a net −63.0 %. The edge is thus evening-owned *by composition*, tail-owned *by band*, and the residual evening effect is an amplification of an already-present tail edge — consistent with item 2's physical story (the slow fabric-mass capacitor tracks the evening's multi-hour cooling ramp, the regime where tracking would otherwise break).
+
 ## 8. Reproducibility
 
 ```
@@ -270,6 +285,7 @@ python3 verify_persistence.py        # day-block bootstrap CI on the cmri-vs-per
 python3 verify_quantiles.py          # where the edge lives in the error distribution: |e_v2| bands + daily-q tail tests (§7 item 6)
 python3 verify_freerun_variance.py   # day-block verification: the free-run edge is within-day variance (sd separates 30/42), pooled RMSE episode-owned (§5.2)
 python3 verify_diffclone.py          # day-level structural probe of the resync bias concession: within-day sd separates 34/42 (t=+4.74), mean-bias is a level offset (§5.5, §7 item 7)
+python3 verify_timeband.py           # joint time-of-day x error-magnitude probe: the tail edge is period-global (0.6+ separates both periods), evening = composition + within-day amplification (§7 item 8)
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
@@ -297,6 +313,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `verify_quantiles.py` | error-distribution analysis: where the edge lives (|e_v2| bands + daily-q tail tests, §7 item 6) |
 | `verify_freerun_variance.py` | day-block verification of the free-run variance claims: within-day sd separates (30/42, t = +3.51), pooled RMSE gap is episode-owned, ρ = 0.133 is a between-day artifact (§5.2) |
 | `verify_diffclone.py` | day-level structural probe of the resync claim: within-day sd separates (34/42, t = +4.74), RMSE series reproduces §5.5 (t = +2.66), the mean-bias concession is a level offset (§7 item 7) |
+| `verify_timeband.py` | joint time-of-day × error-magnitude probe: the tail edge is global to both periods (0.6+ separates p = 0.007 / 0.002), evening is tail-by-composition plus a within-day amplification (+0.19 °C, z = +2.40), the evening 87.6 % share decomposes into cell shares (§7 item 8) |
 | `results/comparison.md` | generated comparison write-up (tables + verdict) |
 | `results/metrics.csv` | full metrics matrix (test/free-run/train/floor) |
 | `results/ablation.md` | ablation tables + reading |
