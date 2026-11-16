@@ -105,6 +105,26 @@ def main() -> None:
         print(f"  {label:<30} n={win+loss:<6} mean d={statistics.fmean(dd):+.4f} "
               f"win rate={win/(win+loss):.3f}  sign z={z:+.2f}  one-sided p={p:.2e}")
 
+    # Honest day-level test per band: the step-level sign tests above overstate
+    # significance because within-day errors have lag-1 rho ~ 0.97 (rcf. §7 item 1),
+    # so the report's discipline is to resample whole calendar days.  For each
+    # band, per-day mean paired d = mean|e_v2| - mean|e_cmri| over that band's
+    # steps, then a binomial sign test on which days have positive d.
+    print("\nday-block sign test per band (whole-day blocks = honest independence unit):")
+    for lo, hi, label in bands:
+        by_day: dict[str, list[float]] = {}
+        for h in range(lo, hi):
+            for key, av, ac in per_h[h]:
+                by_day.setdefault(key, []).append(av - ac)
+        if not by_day:
+            continue
+        m = [statistics.fmean(dd) for dd in by_day.values()]
+        wins = sum(1 for x in m if x > 1e-12)
+        z, p = sign_test(wins, len(m))
+        print(f"  {label:<26} {len(m):>3} days  cmri better {wins:>2}  "
+              f"mean day d {statistics.fmean(m):+.4f}  sign z {z:+.2f}  "
+              f"one-sided p {p:.3f}")
+
     # Full-day block comparison: mean |err| over the whole day, one block per day.
     day_d = [statistics.fmean(av for av, _ in b) - statistics.fmean(ac for _, ac in b)
              for b in days.values()]

@@ -195,6 +195,8 @@ The second headline claim — cmri beats the daily-resync persistence control (0
 | 72–106 / 12–17.7 h | 0.5389 | 0.5337 | +0.0052 | 0.540 |
 | 106+ / last 6 h | 0.8340 | 0.5847 | +0.2493 | 0.688 |
 
+The step-level sign tests above overstate significance — within-day errors have lag-1 ρ ≈ 0.97 (§7), so each band is also tested with whole-day blocks (per-day mean d per band, binomial sign test; the re-anchored day is the honest independence unit): first 2 h 27/42 days (z = +1.70, p = 0.045), 2–6 h 24/42 (z = +0.77, p = 0.22), 6–12 h 22/42 (z = +0.15, p = 0.44), 12–17.7 h 23/41 (z = +0.62, p = 0.27), **last 6 h 29/41 days (z = +2.50, one-sided p = 0.006)**. The interior bands are statistically indistinguishable at day level too — consistent with the "equal mid-horizons" reading — while the day-boundary edge is the one band that separates honestly.
+
 Sign test on the short/long split: steps 0–11 win 0.612 (mean d = +0.0129 °C, p = 3.3e-07); steps 12+ win 0.578 with mean d = +0.0768 °C, one-sided p < 1e-16. **The fabric-mass capacitor earns its keep exactly where physics says it should, and *only* there.** The edge is concentrated at the day's start (first ~2 h, where the coupled fabrication re-establishes its mean-reversion anchor) and above all in the last ~6 h of each day — Δ0.25 °C per step at 106+ steps, versus statistically indistinguishable errors in the 6–18 h interior. The two-timescale selection traded mid-day edge (which the single-fabric config held, §5.6 previous) for the large open-loop gain of §5.2; the last-6 h edge is the same slow-mass mechanism that anchors the open-loop trend, and it grew from Δ0.19 to Δ0.25 °C per step. At daily resync this is precisely the multi-hour drift the single-zone v2 structurally cannot express.
 
 ## 6. Calibrated cmri coefficients: what the fitted physics says
@@ -241,7 +243,7 @@ python3 diagnose_freerun.py       # held-out free-run drift diagnosis (seasonal 
 python3 freerun_diag_train.py     # within-train free-run diagnostic: fits on first X, runs the rest
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
 python3 verify_significance.py     # paired test: is cmri's win over v2 real? (HAC DM)
-python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation
+python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation (+day-block band tests)
 python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile
 python3 verify_freerun.py           # free-run day-block paired test: does the open-loop win separate?
 python3 verify_rmse_gap.py           # day-block bootstrap CI on the headline RMSE gap
@@ -265,7 +267,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `diagnose_freerun.py` | held-out free-run drift diagnosis (lead/lag, seasonal level shift) |
 | `freerun_diag_train.py` | within-train open-loop check: the drift is a seasonal shift, not a model deficit |
 | `verify_significance.py` | paired statistical test of cmri's win over v2 (HAC DM) |
-| `verify_horizon.py` | horizon-split re-aggregation of frozen resync predictions |
+| `verify_horizon.py` | horizon-split re-aggregation of frozen resync predictions (per-band day-block sign tests) |
 | `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile of frozen predictions |
 | `verify_freerun.py` | free-run day-block paired test: does the open-loop win separate statistically? |
 | `verify_rmse_gap.py` | day-block bootstrap CI on the headline RMSE gap (pooled + per-day t) |
