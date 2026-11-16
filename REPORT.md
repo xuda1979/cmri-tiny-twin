@@ -159,7 +159,7 @@ Additive drivers on top of the v2 driver set, identical protocol:
 
 ### 5.4 Conclusion
 
-- **cmri beats v2 on every held-out resync metric** (RMSE 0.646 → 0.531, −18%) and now **beats the daily-resync persistence control** (0.531 vs 0.625) — the single-zone v2's persistent caveat of trailing a trivial "temperature stays put" forecast is resolved.
+- **cmri beats v2 on every held-out resync metric** (RMSE 0.646 → 0.531, −18%) and now **beats the daily-resync persistence control** (0.531 vs 0.625, day-block bootstrap CI +0.017 to +0.164 °C, §5.5) — the single-zone v2's persistent caveat of trailing a trivial "temperature stays put" forecast is resolved.
 - The gain is concentrated at the day's boundaries — the first ~2 h and especially the last ~6 h before each resync (§5.6): the slow fabric-mass capacitor is exactly the mechanism a first-order RC twin structurally lacks. At mid-horizons (6–12 h) the two models are now statistically equal — the two-timescale re-selection traded some mid-day edge for a large free-run stability win.
 - Free-run is the secondary protocol, and **the slow-capacitor fix flipped it in cmri's favor**: cmri now edges v2 on the 41-day continuous run (1.492 vs 1.575 °C, §5.2) — a variance-driven improvement (per-step error sd 1.482 → 1.172 °C, error trend slope halved) at the cost of a slightly larger mean bias (−0.92 vs −0.87 °C).
 - All artifacts regenerate from `python3 experiment_cmri.py` and `python3 cmri_twin.py`; every coefficient is OLS-fitted on the training block, nothing touched the held-out test until the single frozen evaluation.
@@ -179,7 +179,9 @@ Additive drivers on top of the v2 driver set, identical protocol:
 
 The 10-min resync errors are strongly autocorrelated within a day (lag-1 ρ ≈ 0.97), so the naive iid t/DM statistics overstate significance; the honest upper bound is the HAC DM at bw = 1440, which still rejects H0 of equal predictive accuracy at p ≈ 3.5e-03. **The cmri margin is not sample luck.** The margin is thinner than the single-fabric config (mean d +0.1000 → +0.0713 °C, win rate 0.676 → 0.579) — the honest price of the free-run fix — but it remains significant by the strictest autocorrelation-corrected test, and cmri also beats the daily-resync persistence control on RMSE (0.531 vs 0.625). The §5.6 horizon analysis shows where the surviving edge lives.
 
-The headline RMSE number itself (Δ = +0.1153 °C) carries an uncertainty bound (`verify_rmse_gap.py`). The tests above operate on the MAE-loss differential; for the RMSE metric the same day-block discipline applies — resample whole resync days and recompute the pooled gap. Day-block bootstrap (B = 5000): 95 % percentile CI **+0.031 to +0.206 °C**, P(gap > 0) = 0.998. The per-day paired gap series (42 days) agrees: mean +0.0985, se 0.0370, t = +2.66 (normal-approx 95 % CI +0.026 to +0.171). The CI width (~0.17 °C) is honest about day-to-day variance, but the margin does not straddle zero — under both procedures the squared-error win is significant, matching the HAC-DM rejection on the mean.
+The headline RMSE number itself (Δ = +0.1153 °C vs v2) carries an uncertainty bound (`verify_rmse_gap.py`). The tests above operate on the MAE-loss differential; for the RMSE metric the same day-block discipline applies — resample whole resync days and recompute the pooled gap. Day-block bootstrap (B = 5000): 95 % percentile CI **+0.031 to +0.206 °C**, P(gap > 0) = 0.998. The per-day paired gap series (42 days) agrees: mean +0.0985, se 0.0370, t = +2.66 (normal-approx 95 % CI +0.026 to +0.171). The CI width (~0.17 °C) is honest about day-to-day variance, but the margin does not straddle zero — under both procedures the squared-error win is significant, matching the HAC-DM rejection on the mean.
+
+The second headline claim — cmri beats the daily-resync persistence control (0.531 vs 0.625) — gets the same treatment (`verify_persistence.py`, joining the frozen `persistence_resync` column from `results/predictions.csv` onto the cmri artifact, which is row-identical on `(date, T1_observed)` and `v2_resync`). Pooled RMSE gap **+0.0938 °C**; day-block bootstrap (B = 5000) 95 % CI **+0.017 to +0.164 °C**, P(gap > 0) = 0.993; per-day series mean +0.0897, se 0.0380, t = +2.36 (95 % CI +0.015 to +0.164), cmri better on 28/42 days. The margin is narrower than vs v2 (0.094 vs 0.115 °C) — v2's own weakness was trailing this same control — but it too does not straddle zero, so the persistence win is real, not an artifact of day-to-day variance.
 
 ### 5.6 Where the edge lives: horizon analysis
 
@@ -243,6 +245,7 @@ python3 verify_horizon.py          # where the edge lives: horizon-split re-aggr
 python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile
 python3 verify_freerun.py           # free-run day-block paired test: does the open-loop win separate?
 python3 verify_rmse_gap.py           # day-block bootstrap CI on the headline RMSE gap
+python3 verify_persistence.py        # day-block bootstrap CI on the cmri-vs-persistence RMSE gap
 ```
 
 Everything is Python 3 standard library only — no numpy/scipy/pandas — and the results tables above were regenerated from scratch immediately before this report (artifacts timestamped in `results/`).
@@ -266,6 +269,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile of frozen predictions |
 | `verify_freerun.py` | free-run day-block paired test: does the open-loop win separate statistically? |
 | `verify_rmse_gap.py` | day-block bootstrap CI on the headline RMSE gap (pooled + per-day t) |
+| `verify_persistence.py` | day-block bootstrap CI on the cmri-vs-persistence RMSE gap (pooled + per-day t) |
 | `results/comparison.md` | generated comparison write-up (tables + verdict) |
 | `results/metrics.csv` | full metrics matrix (test/free-run/train/floor) |
 | `results/ablation.md` | ablation tables + reading |
