@@ -1,0 +1,260 @@
+设计说明书
+tiny-twin（轻量级建筑热动力学孪生仿真软件）V1.0
+
+（依据《计算机软件文档编制规范》GB/T 8567-2006 编制）
+
+=============================================================================
+
+1  引言
+-----------------------------------------------------------------------------
+
+1.1  编写目的
+本说明书面向软件评审、使用与维护人员，说明 tiny-twin 软件的总体设计、
+模块划分、接口约定与核心算法，作为后续详细设计、编码与测试的依据。
+
+1.2  软件背景与目标
+tiny-twin 是一套轻量级建筑室内温度动力学数字孪生仿真软件。它以 UCI
+Appliances 能耗数据集（比利时 Chievres，北纬 50.56°、东经 3.83°）中的真实
+室内/室外传感器时序为样本，用集总参数 RC（电阻-电容）等效热网络刻画建筑
+室内温度在 10 分钟离散步长下的演化过程；通过数据驱动的最小二乘标定得到
+模型系数，并给出严格的训练/测试时间切分下的精度评估。
+软件目标：
+  a) 以纯 Python 标准库实现，零第三方依赖，单机可复现全部实验；
+  b) 提供可解释的双温区耦合热网络模型（厨房区 T1 与住宅区 Th）；
+  c) 提供日重同步与自由运行两种仿真协议与四项精度指标；
+  d) 提供模型消融分析与 13 个独立统计验证脚本。
+
+1.3  术语定义
+  RC 热网络    将建筑围护结构抽象为电阻（热阻）与电容（热容）串联/并联
+              的等效电路，室内温度即电容两端电压，随温差驱动项演化。
+  OLS          普通最小二乘（Ordinary Least Squares），以误差平方和最小
+              化拟合线性系数。
+  正态方程     闭式最小二乘解 (XᵀX)c = Xᵀy，本软件以列标准化加高斯消元
+              求解。
+  列标准化     X 每列减去均值并除以标准差，改善条件数后再求解。
+  岭回归       对标准化设计矩阵对角线加 alpha 的 L2 正则化，抑制共线性。
+  日重同步协议 每个仿真日以当日首个观测温度重新初始化后连续推演，
+              主评协议。
+  自由运行协议 整段测试不做任何重新初始化的连续推演，稳健性次评协议。
+  驱动项       驱动态温差（T_driver - T）形式的物理输入，共 10 类。
+  EMA          指数滑动平均（Exponential Moving Average），用于构造双
+              时间尺度建筑蓄热质量温度。
+  RMSE/MAE/R²/MAPE  均方根误差、平均绝对误差、决定系数、平均绝对百分
+              比误差。
+  resync       日重同步协议下测试段共 5879 个样本点（后 30%）。
+
+1.4  参考资料
+  a) UCI Machine Learning Repository: Appliances energy prediction Data Set；
+  b) 《计算机软件文档编制规范》GB/T 8567-2006；
+  c) Kasten & Young（1989）大气质量近似（用于晴空太阳辐照计算）。
+
+=============================================================================
+
+2  总体设计
+-----------------------------------------------------------------------------
+
+2.1  系统结构
+软件由 26 个 Python 源文件构成，逻辑上分为五层：
+
+                    用户/命令行入口层
+        run_experiment  experiment_cmri  ablation  select_cv
+        select_cv_slowfab  select_config  select_config2  grid_knobs
+        diagnose_freerun  freerun_diag_train  verify_*.py（13 个）
+                                │
+                    实验编排层
+        run_experiment.py（v1/v2 对比实验）
+        experiment_cmri.py（cmri 耦合实验 + 消融）
+                                │
+                    孪生模型层
+        tiny_twin.py    v1 手册系数基线模型
+        tiny_twin_v2.py CalibratedTwin（单温区 OLS 标定）
+        cmri_twin.py    CmriTwin（双温区耦合，10 驱动项）
+                                │
+                    数值算法层
+        LinearModel（OLS 标定）  _solve_gauss（高斯消元）
+        clear_sky_ghi（晴空太阳辐照）  fabric_mass（EMA 蓄热质量）
+                                │
+                    数据与结果层
+        data/energydata_complete.csv（输入样本）
+        results/*.csv  *.md  *.svg（输出指标、系数、预测与图件）
+
+2.2  模块划分（核心模块清单）
+  模块名              职责
+  tiny_twin.py        v1 基线：固定手册系数单步温度更新，不触数据
+  tiny_twin_v2.py     单温区线性化 RC 模型；LinearModel（列标准化+岭回归+
+                     高斯消元）；CalibratedTwin 拟合/预测
+  cmri_twin.py        双温区耦合 CmriTwin；晴空太阳辐照 clear_sky_ghi；
+                     双时间尺度蓄热质量 fabric_mass；住宅区合成 house_zone
+  run_experiment.py   v1/v2/持久性三方对比：数据装载、协议运行、指标
+                     计算、结果落盘、SVG 图件（--selftest 自检）
+  experiment_cmri.py  cmri 耦合模型对比实验：拟合、日重同步/自由运行评估、
+                     消融表（ABLATIONS）、结果落盘（--selftest 自检）
+  ablation.py         v2 驱动项消融：单区模型上的驱动集叠加分析
+  select_cv.py        训练段内交叉验证选择特征掩码/alpha/采暖设定温度
+  select_cv_slowfab.py 在 select_cv 基础上追加选择慢蓄热质量时间常数
+  select_config.py / select_config2.py  冻结配置复查脚本
+  grid_knobs.py       关键超参网格灵敏度探查
+  diagnose_freerun.py / freerun_diag_train.py  自由运行误差溯源诊断
+  verify_*.py         13 个统计验证脚本（显著性、稳健性、残差、时间结构等）
+
+2.3  接口设计
+  a) 数据文件接口：CSV，逗号分隔，首行表头。必需列：
+     date（YYYY-MM-DD HH:MM:SS 或 ISO 时间）、T1、T2、T3、T4、T5、T6、
+     T7、T8、T9、T_out、Tdewpoint、Appliances、lights、Windspeed。
+     GHI 列不存在，由 cmri_twin.clear_sky_ghi 依据时间戳实时计算。
+  b) 模块函数接口：
+     run_experiment.load_data(path) -> dict[str, list]
+     run_experiment.run_protocol(model, state, recs, resync_days)
+       -> (resync_preds, freerun_preds)
+     run_experiment.metrics(pred, obs) -> dict（rmse/mae/r2/mape）
+     cmri_twin.CmriTwin(alpha=0.0, t_set=T_SET, keep=...)
+       .fit(T1,Th,t_out,dew,load,lux,wind,ghi,t_mass[,t_mass2])
+       .step(t1,th,t_out,dew,load,lux,wind,ghi,t_mass[,t_mass2])
+       -> (t1+dk, th+dh)
+     cmri_twin.house_zone(T_sensor_sets) -> list[float]
+     tiny_twin_v2.LinearModel(alpha=0.0)
+       .fit(x_rows, y)  .predict(x_row)
+     experiment_cmri.run_protocol_cmri(twin, state, recs, resync_days)
+  c) 命令行接口：每个脚本以 `python3 <脚本名.py> [参数]` 运行，
+     run_experiment.py 与 experiment_cmri.py 支持 `--selftest` 内置自检。
+  d) 结果文件接口：全部输出写入 results/ 目录，CSV（指标/系数/预测）、
+     Markdown（对比报告）、SVG（曲线图件）。
+
+2.4  数据结构设计
+  a) logger 数据：data 字典，键为列名，值为 list[float]（时间戳为 str）；
+  b) 样本记录：测试段按 zip 生成 records 表，字段顺序
+     (T1, Th, t_out, dew, load, lux, wind, ghi, t_mass[, t_mass2])；
+  c) 设计矩阵：拟合时特征按 (T_driver - T) 温差形式组织，样本数约
+     1.2 万（训练段）x 特征数（≤10），以 list-of-list 内存驻留；
+  d) 输出表：metrics_cmri.csv 行（model, protocol, rmse, mae, r2, mape,
+     n）；coefficients_cmri.csv 行（zone, name, coef）；ablation_cmri.csv
+     行（variant, drivers, rmse, mae, r2, mape, d_rmse, n）。
+
+2.5 训练/测试与验证的切分设计（评估契约）
+  a) 全部样本 n=19735，按时间先后取 TRAIN_FRAC=0.70 训练段 [0,13814)；
+  b) 后 30% 为保持测试段，训练中绝不触碰；
+  c) 模型选择（交叉验证）只在训练段内的验证块上进行，
+     验证块取 [round(0.8*13814), 13814) = [11051, 13814)，供
+     select_cv*.py 与 verify_* 脚本复用，保证与冻结配置可比；
+  d) 主协议日重同步在测试段得 n=5879 样本，次协议自由运行 n=5920。
+
+=============================================================================
+
+3  详细设计
+-----------------------------------------------------------------------------
+
+3.1  设计原则
+  以"温差驱动 + 系数标定"统一所有热驱动项：每一个物理驱动项 P 对室内
+  温度的作用形式为系数乘 (P - T)。离散化采用前向欧拉：
+      T_{t+1} = T_t + (DT_SEC/3600.0) * Σ_j c_j * (driver_j - T_t)
+  DT_SEC=600.0（10 分钟），系数 c_j 的单位为每小时变化率（1/h）。
+
+3.2  LinearModel：最小二乘标定算法（tiny_twin_v2.py）
+  a) 数据准备：对每个特征列 x 计算均值 mean 与标准差 sd（sd≤1e-12 时置 1
+     以防除零），构造规范行 [1.0, (x-mean)/sd]，首列 1 对应偏置项；
+  b) 正态方程累加：A[i][j] += row[i]*row[j]，b[i] += row[i]*y，扫过全部
+     训练样本后 A 为对称 Gram 矩阵；
+  c) 岭正则化：A[i][i] += alpha（仅作用于标准化列，偏置列不加）；
+  d) 高斯消元 _solve_gauss：列主元选 pivot=max{|A[*][col]|}，主元退化
+     （<1e-12）时将该行对角线置 1 后继续，回代求解；
+  e) 反标准化：raw[j+1] = sol[j+1]/sd[j]，raw[0] = sol[0] 为偏置；
+  f) 预测：predict 以同样 mean/sd 标准化新样本后做点积。
+
+3.3  CalibratedTwin：单温区孪生（tiny_twin_v2.py）
+  特征（相对 T 的温差）：
+     env:    T_out - T
+     dew:    Tdewpoint - T
+     appl:   Appliances / Q_SCALE - T（Q_SCALE=100.0）
+     lux:    lights / Q_SCALE - T
+     bias:   常量 1（偏置，反映稳态偏移）
+  以实际观测温差 dT(T)/dt 的 10 分钟差分作为 y 拟合后，step() 按
+  3.1 递推。
+
+3.4  CmriTwin：双温区耦合模型（cmri_twin.py）
+  厨房区 T1（K 区）与住宅区 Th（H 区）互相以温差耦合。全模型 10 个候选
+  驱动项索引：0 围护、1 风致渗透、2 晴空太阳辐照 GHI、3 区际耦合、
+  4 露点潜热、5 电器发热、6 照明发热、7 恒温器采暖、8 快蓄热质量、
+  9 慢蓄热质量。冻结配置 CMRI_KEEP=(0,3,4,5,6,7,8,9)。
+  厨房特征 _k_feats：
+     0: T_out - t1
+     3: th - t1
+     4: Tdewpoint - t1
+     5: Appliances/Q_SCALE - t1
+     6: lights/Q_SCALE - t1
+     7: max(t_set - t1, 0)   （t_set=21.0）
+     8: t_mass - t1
+  住宅特征 _h_feats：镜像同上，精确为驱动器相对 th 的温差。
+  step()：dk = Σ_j c_j^K * feat_j^K，dh = Σ_j c_j^H * feat_j^H，
+  返回 (t1 + dk, th + dh)。
+
+3.5  fabric_mass：双时间尺度建筑蓄热质量（cmri_twin.py）
+  trigger 指数滑动平均，权重 w 对应时间常数 τ = -DT_SEC/ln(w)：
+     t_mass_{t+1} = w * t_mass_t + (1-w) * t_out
+  CMRI_W=0.944 对应 τ=3h 的快热容（刻画天气波动），CMRI_W2=0.986 对应
+  τ=12h 的慢热容（刻画季节漂移）。
+
+3.6  clear_sky_ghi：物理化太阳辐照代理（cmri_twin.py）
+  a) 由比利时 Chievres 地理坐标 LAT_DEG=50.56、LON_DEG=3.83 计算该时刻
+     太阳时角、赤纬与太阳高度角 h；
+  b) Kasten-Young 大气质量近似：m = 1/(sin h + 0.50572*(h_deg+6.07995)^-1.6364)；
+  c) 晴空水平辐照度 GHI = 常数 * sin h * exp(-衰减系数 * m)，夜晚（h≤0）
+     为 0；量纲 W/m²，使太阳系数获得物理解释。
+
+3.7  仿真协议实现
+  a) 日重同步（run_protocol / run_protocol_cmri，主评协议）：
+     遍历测试段按 date 分日，每日以当日首个观测温度作为初始态，之后
+     10 分钟一步连续推演，记录孟天所有步的预测；
+  b) 自由运行（次评协议）：整段仅以首个样本初始化，其后一直推演不再
+     接触观测；
+  c) 两个协议共用同一条测试段记录流，保证可比。
+
+3.8  metrics：四项精度指标（run_experiment.py）
+     rmse = sqrt(mean((pred-obs)^2))
+     mae  = mean(|pred-obs|)
+     r2   = 1 - ss_res/ss_tot
+     mape = 100 * mean(|pred-obs|/|obs|)
+  统计验证脚本在指标层上追加配对检验、Diebold-Mariano HAC（bandwidth 5）、
+  日块自助法（B=5000，种子 42）与整日符号检验。
+
+3.9  消融设计（experiment_cmri.py ABLATIONS 与 ablation.py）
+  在冻结特征掩码上按驱动项累积叠加：v2_drivers → plus_thermo（恒温器）
+  → plus_coupl（区际耦合）→ plus_fab（快蓄热质量）→ plus_wind（风渗透）
+  → cmri_full（太阳辐照）→ plus_slowfab（慢蓄热质量）；消融行一律以
+  alpha=0 无正则拟合，逐项报告 RMSE 增量 d_rmse，回答"哪一项物理模块
+  带来多少精度提升"。
+
+3.10 验证脚本设计（verify_*.py，13 个）
+  统一在训练段内选取与冻结配置一致的验证块，测试段只读取不复算：
+  verify_significance / verify_rmse_gap（赢面的不确定度）
+  verify_persistence（对持久性基准的边界）
+  verify_residuals / verify_quantiles / verify_timeband（残差与定位）
+  verify_temporal / verify_horizon（时间稳定性与分段归属）
+  verify_freerun / verify_freerun_variance（自由运行稳健性机理）
+  verify_housezone（住宅区准确性）、verify_diffclone（重同步让步结构）、
+  verify_ablation_ridge（消融与冰冻配置的岭回归一致性）。
+  每个脚本确定性输出 PASS/FAIL 结论与关键数字。
+
+3.11 模块接口耦合关系
+  experiment_cmri.py 依赖 cmri_twin.py（CmriTwin/fabric_mass/clear_sky_ghi/
+  house_zone）与 run_experiment.py（TRAIN_FRAC/metrics）；run_experiment.py
+  依赖 tiny_twin_v2.py（CalibratedTwin/LinearModel）与 tiny_twin.py（V1Model
+  基线）；全部数值算法无第三方依赖，可直接随 CPython 运行。
+
+=============================================================================
+
+4  测试设计
+-----------------------------------------------------------------------------
+  a) 内置自检 selftest：run_experiment.py --selftest 以高斯随机过程构造
+     已知真值，验证 LinearModel 精确恢复系数；cmri_twin.py 与
+     experiment_cmri.py --selftest 验证 CmriTwin 恢复已知 K/H 系数，
+     容差 1e-5；
+  b) 端到端自洽：run_experiment.py / experiment_cmri.py 运行后生成
+     results/ 全套制品，行数 n 与切分约定必须吻合；
+  c) 交叉验证一致性：select_cv*.py 选择结果与冻结配置 CMRI_ALPHA、
+     CMRI_KEEP、CMRI_W、CMRI_W2 一致；
+  d) 验证脚本确定性：13 个 verify_*.py 输出固定种子下的稳定 PASS/FAIL。
+
+=============================================================================
+
+（本说明书与源程序、用户手册配套使用；全部行号、系数与冻结配置以
+results/ 目录产物为准。）
