@@ -5,7 +5,7 @@ REPORT.md §8 ("Reproducibility") and §9 ("Files") are the hand-maintained
 contract between the report and the on-disk inventory.  Three count literals
 are bumped by hand on every new probe — the §8 runner line's "(N/N scripts",
 the §9 runner row's "all N verify probes", and the run_all_verifications.py
-docstring's "(N scripts)" — and §7's 37 residual-diagnostic items are each
+docstring's "(N scripts)" — and §7's 38 residual-diagnostic items are each
 supposed to have at least one probe citing them.  Count-literal drift is
 exactly the failure class this probe exists to catch: a new probe added to
 disk without the three coordinated report edits silently breaks the catalog
@@ -24,7 +24,7 @@ the filesystem, gating on every §8/§9 invariant:
   (c) the §9 Files-table verify rows are identical to the on-disk probe set;
   (d) every §8 verify invocation carries a "#" comment (the cited-reading
       trail each probe must state);
-  (e) the §7 items cited across the §8 verify comments cover exactly 1..37 —
+  (e) the §7 items cited across the §8 verify comments cover exactly 1..38 —
       every §7 item has a citing probe and no citation falls outside the
       range (the "every section reading has a probe" audit in machine form;
       legacy probes that predate per-item citation are permitted — the gate
@@ -60,7 +60,7 @@ import sys
 
 REPORT = pathlib.Path("REPORT.md")
 RUNNER = pathlib.Path("run_all_verifications.py")
-N_ITEMS = 37  # REPORT.md §7 residual-diagnostics item count (committed catalog)
+N_ITEMS = 38  # REPORT.md §7 residual-diagnostics item count (committed catalog)
 
 
 def code_block(text: str, heading: str) -> str:
@@ -146,7 +146,7 @@ def main() -> None:
             f"{len(verify_lines) - len(no_comment)}/{len(verify_lines)} commented"
             + (f"; missing: {', '.join(no_comment)}" if no_comment else ""),
         ),
-        "(e) §7 items cited in §8 comments == 1..37 exactly": (
+        "(e) §7 items cited in §8 comments == 1..38 exactly": (
             not missing_items and not out_of_range,
             (f"all {N_ITEMS} §7 items 1..{N_ITEMS} cited, none outside"
              if not missing_items and not out_of_range
