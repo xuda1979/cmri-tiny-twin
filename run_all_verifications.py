@@ -7,7 +7,7 @@ Consolidates every check in REPORT.md §8 into a single deterministic suite:
       - python3 run_experiment.py --selftest   (OLS / Gaussian elimination)
       - python3 experiment_cmri.py --selftest  (couple coefficient recovery)
       - python3 cmri_twin.py                   (coupled 2-zone self-test)
-  * every verify_*.py probe (42 scripts) in alphabetical order.
+  * every verify_*.py probe (43 scripts) in alphabetical order.
 
 Each entry is run in a fresh subprocess, so scripts stay run-order-independent
 (no cross-verify imports, no shared ephemeral state — they only read the
