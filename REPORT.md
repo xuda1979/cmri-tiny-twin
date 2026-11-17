@@ -483,6 +483,7 @@ python3 select_config2.py         # within-train selection + momentum driver (su
 python3 diagnose_freerun.py       # held-out free-run drift diagnosis (seasonal level-shift)
 python3 freerun_diag_train.py     # within-train free-run diagnostic: fits on first X, runs the rest
 python3 tiny_twin_v2.py            # unit-free; fit/step API self-contained
+python3 run_all_verifications.py  # THE single command: all 3 machinery self-tests + every verify probe below (36/36 scripts, deterministic, exits nonzero on any failure)
 python3 verify_significance.py     # paired test: is cmri's win over v2 real? (HAC DM)
 python3 verify_horizon.py          # where the edge lives: horizon-split re-aggregation (+day-block band tests)
 python3 verify_residuals.py        # residual diagnostics: clock-hour/weekday/worst-episode profile (+day-block band and weekday tests, §7 item 5)
@@ -540,6 +541,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 | `grid_knobs.py` | diagnostic config sweep over masks/ridge/setpoint (diagnostic, not a result; superseded by select_cv.py) |
 | `diagnose_freerun.py` | held-out free-run drift diagnosis (lead/lag, seasonal level shift) |
 | `freerun_diag_train.py` | within-train open-loop check: the drift is a seasonal shift, not a model deficit |
+| `run_all_verifications.py` | consolidated verification runner: one command runs the 3 machinery self-tests + all 36 verify probes (PASS/FAIL summary, nonzero exit on any failure) |
 | `verify_significance.py` | paired statistical test of cmri's win over v2 (HAC DM) |
 | `verify_horizon.py` | horizon-split re-aggregation of frozen resync predictions (per-band day-block sign tests) |
 | `verify_residuals.py` | residual diagnostics: clock-hour/weekday/worst-episode profile (+day-block band & weekday tests, §7 item 5) |
