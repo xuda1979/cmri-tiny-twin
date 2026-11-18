@@ -2,7 +2,7 @@
 
 A short-code, dependencies-free exploration and validation of a *calibrated*
 building-thermal digital twin. The full technical note — dataset provenance,
-method, 52 verification checks, and conclusions — lives in
+method, 53 verification checks, and conclusions — lives in
 [`REPORT.md`](REPORT.md); this README is the entry point for the code.
 
 ## What this is
@@ -22,8 +22,8 @@ dataset (UCI). Two twins are evaluated side by side:
 tiny_twin.py / tiny_twin_v2.py / cmri_twin.py   models
 run_experiment.py / experiment_cmri.py          evaluation drivers
 select_config*.py / ablation.py / grid_knobs.py hyperparameter / ablation studies
-verify_*.py            49 targeted verification probes
-run_all_verifications.py   runs every probe (52 checks: 3 self-tests + 49 probes)
+verify_*.py            50 targeted verification probes
+run_all_verifications.py   runs every probe (53 checks: 3 self-tests + 50 probes)
 ```
 
 ## Run it
@@ -31,7 +31,7 @@ run_all_verifications.py   runs every probe (52 checks: 3 self-tests + 49 probes
 Zero external dependencies — only a Python 3.9+ interpreter.
 
 ```bash
-python3 run_all_verifications.py     # full verification suite (52 checks)
+python3 run_all_verifications.py     # full verification suite (53 checks)
 python3 run_experiment.py          # full run -> results/
 python3 run_experiment.py --selftest # OLS sanity check
 ```
@@ -46,11 +46,11 @@ autocorrelation and quantiles. Full numbers in `REPORT.md` and
 
 ## Verification
 
-`run_all_verifications.py` exits 0 only if all 52 checks pass:
+`run_all_verifications.py` exits 0 only if all 53 checks pass:
 OLS self-tests, coefficient honesty, persistence/variance baselines,
 free-run trajectory fidelity, RMSE gap, residual whiteness, quantile
 coverage, ablation ordering, dataset provenance, horizon roll-off, and the
-v2-vs-v1 within-episode advantage. Last run: **52 passed, 0 failed**.
+v2-vs-v1 within-episode advantage. Last run: **53 passed, 0 failed**.
 
 ## License
 
