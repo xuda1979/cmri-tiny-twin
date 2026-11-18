@@ -621,6 +621,7 @@ Everything is Python 3 standard library only — no numpy/scipy/pandas — and t
 
 | file | role |
 |---|---|
+| `README.md` | repo entry point: layout, run commands, results summary, verification guide, license |
 | `tiny_twin.py` | v1 baseline: fixed handbook coefficients |
 | `tiny_twin_v2.py` | v2: OLS-calibrated RC twin |
 | `run_experiment.py` | data loading, protocols, metrics, artifacts |

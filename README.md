@@ -32,7 +32,7 @@ Zero external dependencies — only a Python 3.9+ interpreter.
 
 ```bash
 python3 run_all_verifications.py     # full verification suite (52 checks)
-python3 run_experiment.py --all      # v1 vs v2 comparison -> results/
+python3 run_experiment.py          # full run -> results/
 python3 run_experiment.py --selftest # OLS sanity check
 ```
 
