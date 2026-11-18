@@ -1,4 +1,11 @@
 tiny-twin轻量级建筑热动力学孪生仿真软件 V1.0
+软件名称：tiny-twin（轻量级建筑热动力学孪生仿真软件）  版本号：V1.0
+著作权人/申请人：许达    工作单位：中国移动研究院
+源代码说明：全项目 63 个 Python 源文件、共 14631 行有效源代码（去掉注释
+行与空行后统计），本申请提交其中核心模块的 60 页可识别程序片段（前 30 页
+为源程序起始部分，后 30 页为源程序结尾部分）。每页第一行为页眉
+「tiny-twin轻量级建筑热动力学孪生仿真软件 V1.0」（左对齐），其后为 50 行
+源代码，最后一行为页脚页码；按 A4 纵向、正文宋体五号（10.5 磅）排版。
 # ===== 模块文件: tiny_twin.py =====
 """tiny_twin.py — baseline "original tiny-twin" simulator (v1).
 A deliberately simple, lazy lumped RC (resistor-capacitor) single-zone thermal
