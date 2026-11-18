@@ -5,10 +5,12 @@ REPORT.md §8 ("Reproducibility") and §9 ("Files") are the hand-maintained
 contract between the report and the on-disk inventory.  Count literals are
 bumped by hand on every new probe — the §8 runner line's "(N/N scripts",
 the §9 runner row's "all N verify probes", the run_all_verifications.py
-docstring's "(N scripts)", README.md's six verification-count sites, and
-REPORT.md's two "N machinery self-tests" prose literals — and every §7
-residual-diagnostic item (1..45 at the time of writing) is supposed to
-have at least one probe citing it.  Count-literal drift is exactly the failure class
+docstring's "(N scripts)", README.md's six verification-count sites,
+REPORT.md's two "N machinery self-tests" prose literals, and REPORT.md's
+results-artifact count literals ("all N committed results/ artifacts",
+"N/N artifacts MATCH", "N == N") — and every §7 residual-diagnostic item
+(1..45 at the time of writing) is supposed to have at least one probe
+citing it.  Count-literal drift is exactly the failure class
 this probe exists to catch: a new probe added to disk without the
 coordinated report/README edits silently breaks the catalog (and has
 drifted in past cycles before the verify_*.py convention matured).
@@ -49,14 +51,23 @@ the filesystem, gating on every §8/§9 invariant:
   (j) REPORT.md's two "N machinery self-tests" prose literals (§8 runner
       line "all 3 machinery self-tests", §9 runner row "runs the 3
       machinery self-tests") equal the runner's derived self-test count —
-      those hand-bumped prose sites are gated like every other digit.
+      those hand-bumped prose sites are gated like every other digit;
+  (k) REPORT.md's results-artifact count literals — the two "all N
+      committed results/ artifacts" phrases (§8 closing-claim line, §9
+      verify_reproducibility.py row), the §8 "N/N artifacts MATCH" verdict,
+      and the §9 "(N == N," summary — all equal the derived on-disk
+      results/ count, so adding an artifact to disk + §9 without bumping
+      the prose cannot silently go stale (gate (g) covers rows, not prose).
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are existence-checked by gate (a) only; their LINE COUNT is
 informational, not a committed literal.  Gate (j) gates only the two
 "N machinery self-tests" count digits, which refer to the three selftest
 TARGETS (run_experiment --selftest, experiment_cmri --selftest,
-cmri_twin.py), not the machinery invocation lines in the block.
+cmri_twin.py), not the machinery invocation lines in the block.  Gate (k)
+gates REPORT.md's results-count PROSE, not verify_reproducibility.py's
+writer-declared WRITERS lists (those are that probe's own internal catalog,
+checked by its own byte-level run).
 
 Exit status: 0 iff every gate passes; any committed inventory digit that does
 not re-verify is reported as an honest negative (the run_all_verifications
@@ -156,6 +167,21 @@ def main() -> None:
     mach_literals = [int(v) for v in lit_s8_mach + lit_s9_mach]
     mach_ok = bool(mach_literals) and all(v == n_selftests for v in mach_literals)
 
+    # (k) REPORT.md's results-artifact count literals vs the derived on-disk
+    #     results/ count — same failure class as (h)/(i)/(j): if a new results/
+    #     artifact were added to disk + §9 without bumping the prose digits,
+    #     the "all 13 committed results/ artifacts" / "13/13 artifacts MATCH" /
+    #     "(13 == 13," sites would silently go stale (gate (g) compares rows,
+    #     not prose).  Non-empty guard: 0 matches -> FAIL, not vacuous-pass.
+    sec8 = text.split("## 8. Reproducibility", 1)[1].split("## 9. Files", 1)[0]
+    n_results = len(results_on_disk)
+    lit_s8_res = [int(v) for v in re.findall(r"all (\d+) committed results/ artifacts", sec8)]
+    lit_s8_match = [int(v) for t in re.findall(r"(\d+)/(\d+) artifacts MATCH", sec8) for v in t]
+    lit_s9_res = [int(v) for v in re.findall(r"all (\d+) committed results/ artifacts", sec9)]
+    lit_s9_sum = [int(v) for t in re.findall(r"\((\d+) == (\d+),", sec9) for v in t]
+    res_literals = lit_s8_res + lit_s8_match + lit_s9_res + lit_s9_sum
+    res_ok = bool(res_literals) and all(v == n_results for v in res_literals)
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -234,6 +260,13 @@ def main() -> None:
             f"{' + '.join(str(v) for v in lit_s9_mach)} == derived "
             f"self-tests {n_selftests}",
         ),
+        "(k) §8/§9 results-artifact count literals == derived results/ count": (
+            res_ok,
+            f"all {n_results} committed results/ artifacts across "
+            f"{len(res_literals)} prose literal(s) "
+            f"({' + '.join(str(v) for v in res_literals) or 'none'}) "
+            f"== derived on-disk {n_results}",
+        ),
     }
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -251,6 +284,8 @@ def main() -> None:
     print(f"    §9 files-table verify rows: {len(verify_rows)}")
     print(f"    §8 programs invoked (existence gate (a)): {len(programs)}")
     print(f"    results/ on disk == §9 results rows: {len(results_on_disk)} == {len(results_rows)}")
+    print(f"    results-artifact prose literals gated by (k): {len(res_literals)} "
+          f"({', '.join(str(v) for v in res_literals) or 'none'})")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -267,8 +302,9 @@ def main() -> None:
               f"1..{n_items}), all {len(rows)} §9 file rows exist, all "
               f"{len(results_on_disk)} results/ artifacts are listed, and the "
               f"three hand-bumped count literals plus README.md's six "
-              f"verification-count sites and REPORT.md's two machinery "
-              f"self-test literals cannot drift from the derived count.")
+              f"verification-count sites, REPORT.md's two machinery "
+              f"self-test literals and its results-artifact count literals "
+              f"cannot drift from the derived count.")
     else:
         print(f"verdict: FAIL — the following committed inventory invariant(s) "
               f"did NOT re-verify: "
