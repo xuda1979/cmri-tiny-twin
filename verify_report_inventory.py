@@ -2,14 +2,15 @@
 """verify_report_inventory.py — is the report's reproducibility catalog consistent?
 
 REPORT.md §8 ("Reproducibility") and §9 ("Files") are the hand-maintained
-contract between the report and the on-disk inventory.  Three count literals
-are bumped by hand on every new probe — the §8 runner line's "(N/N scripts",
-the §9 runner row's "all N verify probes", and the run_all_verifications.py
-docstring's "(N scripts)" — and §7's 45 residual-diagnostic items are each
-supposed to have at least one probe citing them.  Count-literal drift is
-exactly the failure class this probe exists to catch: a new probe added to
-disk without the three coordinated report edits silently breaks the catalog
-(and has drifted in past cycles before the verify_*.py convention matured).
+contract between the report and the on-disk inventory.  Count literals are
+bumped by hand on every new probe — the §8 runner line's "(N/N scripts",
+the §9 runner row's "all N verify probes", the run_all_verifications.py
+docstring's "(N scripts)", and README.md's six verification-count sites —
+and §7's 45 residual-diagnostic items are each supposed to have at least
+one probe citing them.  Count-literal drift is exactly the failure class
+this probe exists to catch: a new probe added to disk without the
+coordinated report/README edits silently breaks the catalog (and has
+drifted in past cycles before the verify_*.py convention matured).
 
 This is a report-inventory consistency claim, not a model reading, so the
 within-train / held-out leg A / leg B structure does not apply: there is no
@@ -36,7 +37,13 @@ the filesystem, gating on every §8/§9 invariant:
   (h) the three committed count literals (runner docstring "(N scripts)",
       §8 "(N/N scripts", §9 "all N verify probes") all equal the derived
       probe count — the drift-prone hand-bumped numbers cannot diverge from
-      discovery.
+      discovery;
+  (i) README.md's six committed verification-count sites (the three "53
+      checks" literals, the "50 targeted verification probes" layout line,
+      the "runs every probe (53 checks: ...)" line, and the trailing
+      "Last run: 53 passed, 0 failed") all equal the derived counts —
+      the checks total is re-derived as the runner's machinery self-tests
+      plus the on-disk probe count, so README cannot drift either.
 
 Note what is NOT gated: §8's phrase "all 3 machinery self-tests" refers to
 the three selftest TARGETS (run_experiment --selftest, experiment_cmri
@@ -60,6 +67,7 @@ import sys
 
 REPORT = pathlib.Path("REPORT.md")
 RUNNER = pathlib.Path("run_all_verifications.py")
+README = pathlib.Path("README.md")
 N_ITEMS = 45  # REPORT.md §7 residual-diagnostics item count (committed catalog)
 
 
@@ -72,11 +80,18 @@ def code_block(text: str, heading: str) -> str:
 def main() -> None:
     text = REPORT.read_text(encoding="utf-8")
     runner_src = RUNNER.read_text(encoding="utf-8")
+    readme_src = README.read_text(encoding="utf-8")
     block = code_block(text, "## 8. Reproducibility")
     sec9 = text.split("## 9. Files", 1)[1]
 
     on_disk = sorted(p.name for p in pathlib.Path(".").glob("verify_*.py"))
     n = len(on_disk)
+
+    # derived "checks" total as printed by the suite: machinery self-tests
+    # (counted from the runner's SELFTESTS list) + every verify probe
+    m_selftests = re.search(r"SELFTESTS = \[\n(.*?)\n\]", runner_src, re.S)
+    n_selftests = len(re.findall(r'^\s*\("', m_selftests.group(1), re.M)) if m_selftests else 0
+    n_checks = n_selftests + n
 
     # (a) every `python3 <prog>` the §8 block invokes exists on disk
     programs = sorted({m.group(1) for m in re.finditer(r"^python3 (\S+\.py)", block, re.M)})
@@ -119,6 +134,12 @@ def main() -> None:
     lit_s9 = re.search(r"all (\d+) verify probes", text)
     literals = [int(lit_runner.group(1)), int(lit_s8.group(1)),
                 int(lit_s8.group(2)), int(lit_s9.group(1))]
+
+    # (i) README.md's committed verification-count sites vs derived totals
+    readme_checks = [int(v) for v in re.findall(r"(\d+) (?:verification checks|checks)", readme_src)]
+    readme_probes = [int(v) for v in re.findall(r"(\d+) (?:targeted verification )?probes", readme_src)]
+    readme_selftests = [int(v) for v in re.findall(r"(\d+) self-tests", readme_src)]
+    readme_lastrun = [int(v) for v in re.findall(r"Last run: .*?(\d+) passed", readme_src)]
 
     no_comment = [name for name, tail in verify_lines
                   if tail is None or "#" not in tail]
@@ -168,16 +189,28 @@ def main() -> None:
             f"runner docstring {literals[0]}, §8 ({literals[1]}/{literals[2]} scripts), "
             f"§9 all {literals[3]} — all equal derived on-disk {n}",
         ),
+        "(i) README count sites == derived checks/probes": (
+            (all(v == n_checks for v in readme_checks)
+             and all(v == n for v in readme_probes)
+             and all(v == n_selftests for v in readme_selftests)
+             and all(v == n_checks for v in readme_lastrun)),
+            f"checks {readme_checks} == derived {n_checks}, "
+            f"probes {readme_probes} == on-disk {n}, "
+            f"self-tests {readme_selftests} == runner {n_selftests}, "
+            f"last-run {readme_lastrun} == derived {n_checks}",
+        ),
     }
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
           "re-derivation of the reproducibility catalog from REPORT.md + "
-          "run_all_verifications.py + the filesystem; consistency claim, "
-          "no fitting, nothing frozen)")
-    print(f"files: {REPORT}, {RUNNER}")
+          "run_all_verifications.py + README.md + the filesystem; "
+          "consistency claim, no fitting, nothing frozen)")
+    print(f"files: {REPORT}, {RUNNER}, {README}")
     print()
     print("  catalog sizes derived independently:")
     print(f"    on-disk verify_*.py      : {n}")
+    print(f"    runner machinery self-tests (SELFTESTS tuples): {n_selftests}")
+    print(f"    derived checks total    : {n_checks} = self-tests + probes")
     print(f"    §8 verify invocations    : {len(invoked)}")
     print(f"    §9 files-table verify rows: {len(verify_rows)}")
     print(f"    §8 programs invoked (existence gate (a)): {len(programs)}")
@@ -197,8 +230,8 @@ def main() -> None:
               f"residual-diagnostic items have a citing probe (none outside "
               f"1..{N_ITEMS}), all {len(rows)} §9 file rows exist, all "
               f"{len(results_on_disk)} results/ artifacts are listed, and the "
-              f"three hand-bumped count literals cannot drift from the derived "
-              f"count.")
+              f"three hand-bumped count literals plus README.md's six "
+              f"verification-count sites cannot drift from the derived count.")
     else:
         print(f"verdict: FAIL — the following committed inventory invariant(s) "
               f"did NOT re-verify: "
