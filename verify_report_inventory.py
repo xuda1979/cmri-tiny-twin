@@ -147,7 +147,31 @@ the filesystem, gating on every §8/§9 invariant:
       verdict total), so the comparison uses last-total-token semantics:
       each row needs >= 1 token and its LAST token must equal the live
       gate-line count — zero tokens, a stale last token, or a stray later
-      token FAILs, never vacuous-passes.
+      token FAILs, never vacuous-passes;
+  (r) the §1 / §2.3 dataset-provenance PROSE numerals in REPORT.md's body
+      — the §1 Period/Structure bullets (lines 13-14 at the time of
+      writing: "2016-01-11 17:00 → 2016-05-27 18:00 (137 days)" and
+      "19,735 rows, all at a uniform 10-minute (600 s) resolution") and
+      the §2.3 Split bullet (line 44: "first 70% (13,814 samples) train,
+      last 30% (5,921 samples) test") — must re-derive read-only from
+      `data/energydata_complete.csv` itself, the one source those facts
+      describe.  Gates (a)-(q) cover only the §8/§9 reproducibility
+      catalog and this probe's self-description; nothing before (r)
+      ties the report BODY's provenance story to the actual data file
+      (verify_dataset_provenance.py gates the CSV against its OWN
+      literals, not against what REPORT.md's prose claims).  Derivation:
+      count the CSV's data rows (19,735 today; the header is the first
+      row), parse the first/last `date` cells (prose format "17:00"
+      vs CSV "17:00:00" — the gate matches the PROSE forms), compute
+      the calendar span as inclusive-days-minus-one, i.e. (last - first)
+      in days (137, consistent with SPAN_DAYS in verify_dataset_
+      provenance.py — the inclusive cell count is 138), and derive the
+      split as int(rows x 0.70) = 13,814 train / 5,921 held-out.  The
+      prose writes thousands separators ("19,735 rows", "13,814
+      samples", "5,921 samples", "600 s"); every scoped site must match
+      once (exactly one occurrence per bullet) and equal the derived
+      value — a stale digit, a missing site, or a stray second match
+      FAILs, never vacuous-passes.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -171,10 +195,12 @@ run_all_verifications.py, and the filesystem inventory.
 
 from __future__ import annotations
 
+import csv
 import pathlib
 import re
 import subprocess
 import sys
+from datetime import datetime
 
 REPORT = pathlib.Path("REPORT.md")
 RUNNER = pathlib.Path("run_all_verifications.py")
@@ -528,6 +554,70 @@ def main() -> None:
         for lab, toks, p in _q_sites)
     q_detail += f" ({len(_q_sites)} sites, last-token-each {'OK' if q_ok else 'FAIL'})"
 
+    # (r) §1 / §2.3 dataset-provenance PROSE numerals in REPORT.md's body —
+    #     the §1 Period/Structure bullets and the §2.3 Split bullet, NOT the
+    #     §8/§9 catalog lines that gates (a)-(q) already cover — must re-derive
+    #     read-only from data/energydata_complete.csv itself: the data-row
+    #     count (header is the first row), the first/last `date` cells (the
+    #     prose prints "17:00" WITHOUT seconds — the CSV cells and verify_
+    #     dataset_provenance.py's literals carry "17:00:00", so the PROSE
+    #     forms are matched verbatim), the calendar span as (last - first) in
+    #     days (137; the inclusive cell count is 138), and the 70/30 split as
+    #     int(rows x 0.70) / rows - that.  The prose writes thousands
+    #     separators ("19,735 rows", "13,814 samples", "5,921 samples"); the
+    #     bullet regexes are anchored at the "^**Period:** / **Structure:** /
+    #     **Split:**" line forms so the §8 dataset_provenance machinery line's
+    #     same tokens ("19,735 rows, 2016-01-11 17:00 → … (137 days)") cannot
+    #     collide.  Every site must match EXACTLY once and equal the derived
+    #     value — a stale digit, a missing bullet, or a stray second match
+    #     FAILs, never vacuous-passes.
+    _csv_path = _root / "data" / "energydata_complete.csv"
+    _r_csv = []
+    if _csv_path.is_file():
+        with _csv_path.open(newline="") as _f:
+            _rows_csv = list(csv.reader(_f))
+        _r_csv = _rows_csv[1:]  # header is the first row
+    _n_rows = len(_r_csv)
+    _f_ymd = (datetime.strptime(_r_csv[0][0], "%Y-%m-%d %H:%M:%S")
+              if _n_rows else None)
+    _l_ymd = (datetime.strptime(_r_csv[-1][0], "%Y-%m-%d %H:%M:%S")
+              if _n_rows else None)
+    _span_days = (_l_ymd - _f_ymd).days if _f_ymd and _l_ymd else -1
+    _step_s = ((datetime.strptime(_r_csv[1][0], "%Y-%m-%d %H:%M:%S")
+                - _f_ymd).total_seconds() if _n_rows >= 2 else -1)
+    _split70 = int(_n_rows * 0.70) if _n_rows else -1
+    _held = _n_rows - _split70 if _n_rows else -1
+    _f_prose = _f_ymd.strftime("%Y-%m-%d %H:%M") if _f_ymd else ""
+    _l_prose = _l_ymd.strftime("%Y-%m-%d %H:%M") if _l_ymd else ""
+    _r_prd = re.findall(
+        r"^- \*\*Period:\*\* (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) → "
+        r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \((\d+) days\)\.$", text, re.M)
+    _r_str = re.findall(
+        r"^- \*\*Structure:\*\* ([0-9,]+) rows, all at a uniform "
+        r"10-minute \(([0-9,]+) s\) resolution\.$", text, re.M)
+    _r_spl = re.findall(
+        r"^- \*\*Split:\*\* first 70% \(([0-9,]+) samples\) train, "
+        r"last 30% \(([0-9,]+) samples\) test.*$", text, re.M)
+    _r_ok = (len(_r_prd) == 1 and _r_prd[0][0] == _f_prose
+             and _r_prd[0][1] == _l_prose
+             and int(_r_prd[0][2]) == _span_days
+             and len(_r_str) == 1
+             and int(_r_str[0][0].replace(",", "")) == _n_rows
+             and int(_r_str[0][1].replace(",", "")) == int(_step_s)
+             and len(_r_spl) == 1
+             and int(_r_spl[0][0].replace(",", "")) == _split70
+             and int(_r_spl[0][1].replace(",", "")) == _held)
+    _r_detail = (f"CSV {_n_rows} rows, {_f_prose} → {_l_prose} ({_span_days} "
+                 f"days), {int(_step_s)} s step, split {_split70}/{_held} vs "
+                 f"prose Period "
+                 f"{'/'.join(_r_prd[0]) if len(_r_prd) == 1 else 'missing'}, "
+                 f"Structure "
+                 f"{'/'.join(_r_str[0]) if len(_r_str) == 1 else 'missing'}, "
+                 f"Split "
+                 f"{'/'.join(_r_spl[0]) if len(_r_spl) == 1 else 'missing'}"
+                 f" ({len(_r_prd)}+{len(_r_str)}+{len(_r_spl)} sites, "
+                 f"single-match-each {'OK' if _r_ok else 'FAIL'})")
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -625,9 +715,10 @@ def main() -> None:
         ),
     }
 
-    # (m), (n), (o), (p) and (q) appended AFTER the dict: (m)'s "N/N gates
-    #     PASS" numeral must equal the TOTAL gate count including all five
-    #     appends (len + 5 while the dict holds the a..l gates), and each of
+    # (m), (n), (o), (p), (q) and (r) appended AFTER the dict: (m)'s "N/N
+    #     gates
+    #     PASS" numeral must equal the TOTAL gate count including all six
+    #     appends (len + 6 while the dict holds the a..l gates), and each of
     #     the two self-description lines must carry EXACTLY ONE "N/N gates
     #     PASS" token (findall — a missing site or a stray second token
     #     FAILs); (n) then gates the same two lines' PROSE numerals (50 probes / 45 items / 14
@@ -641,8 +732,10 @@ def main() -> None:
     #     "total" suffix, so the many "X/Y gates PASS"/bare "X/Y" leg sub-total
     #     digits inside those same rows are not matched) on the four SUMMARY-
     #     style probe rows (o) does not cover — fabricmass/solar/
-    #     selection_cv/negativecontrols — against the same live totals.
-    n_gates = len(gates) + 5
+    #     selection_cv/negativecontrols — against the same live totals;
+    #     (r) gates the §1/§2.3 dataset-provenance prose numerals against a
+    #     read-only derivation from data/energydata_complete.csv.
+    n_gates = len(gates) + 6
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -681,6 +774,10 @@ def main() -> None:
     gates["(q) §9 plain-probe verdict-total numerals == gate-line counts"] = (
         q_ok,
         q_detail,
+    )
+    gates["(r) §1/§2.3 dataset-provenance prose numerals == derived from CSV"] = (
+        _r_ok,
+        _r_detail,
     )
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -734,6 +831,10 @@ def main() -> None:
           + ", ".join(f"{_q_lab[_p]} {_q_counts[_p]}"
                       for _p in _q_probes)
           + f") : {'OK' if q_ok else 'FAIL'}")
+    print(f"    §1/§2.3 dataset-provenance prose numerals gated by (r): "
+          f"CSV {_n_rows} rows, {_f_prose} → {_l_prose} "
+          f"({_span_days} days), {int(_step_s)} s step, split "
+          f"{_split70}/{_held} : {'OK' if _r_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -775,6 +876,11 @@ def main() -> None:
               f"horizontrade {_q_counts['verify_horizontrade_within.py']}, "
               f"horizonsplit {_q_counts['verify_horizonsplit_within.py']}, "
               f"metrictuple {_q_counts['verify_metrictuple_within.py']}), "
+              f"and the §1/§2.3 dataset-provenance prose numerals re-verify "
+              f"against a read-only derivation from "
+              f"data/energydata_complete.csv ({_n_rows} rows, "
+              f"{_f_prose} → {_l_prose} ({_span_days} days, "
+              f"{int(_step_s)} s step, split {_split70}/{_held}), "
               f"and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
