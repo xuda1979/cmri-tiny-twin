@@ -57,17 +57,28 @@ the filesystem, gating on every §8/§9 invariant:
       verify_reproducibility.py row), the §8 "N/N artifacts MATCH" verdict,
       and the §9 "(N == N," summary — all equal the derived on-disk
       results/ count, so adding an artifact to disk + §9 without bumping
-      the prose cannot silently go stale (gate (g) covers rows, not prose).
+      the prose cannot silently go stale (gate (g) covers rows, not prose);
+  (l) the non-verify program catalog: the on-disk *.py programs outside
+      verify_*.py and the §9 program rows (the first backticked token of
+      each non-README, non-verify, non-results row) are the SAME set — no
+      program file on disk without a §9 row, no §9 program row whose file
+      is absent — and every program the §8 block invokes as machinery is
+      one of those §9 program rows (the §8→§9 inclusion direction, so a
+      machinery invocation can never point at a program undocumented in
+      §9).  Gates (a) and (f) each check only the exists-on-disk direction
+      of their catalogs; (l) closes the cross-catalog set-agreement window.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
-writing) are existence-checked by gate (a) only; their LINE COUNT is
-informational, not a committed literal.  Gate (j) gates only the two
-"N machinery self-tests" count digits, which refer to the three selftest
-TARGETS (run_experiment --selftest, experiment_cmri --selftest,
-cmri_twin.py), not the machinery invocation lines in the block.  Gate (k)
-gates REPORT.md's results-count PROSE, not verify_reproducibility.py's
-writer-declared WRITERS lists (those are that probe's own internal catalog,
-checked by its own byte-level run).
+writing) are covered by gates (a) and (l); their LINE COUNT is
+informational, not a committed literal.  §9-only programs that §8 machinery
+never invokes (today exactly tiny_twin.py — a model module, not a driver)
+are reported, not gated: a module need not be re-run by the reproducibility
+block.  Gate (j) gates only the two "N machinery self-tests" count digits,
+which refer to the three selftest TARGETS (run_experiment --selftest,
+experiment_cmri --selftest, cmri_twin.py), not the machinery invocation
+lines in the block.  Gate (k) gates REPORT.md's results-count PROSE, not
+verify_reproducibility.py's writer-declared WRITERS lists (those are that
+probe's own internal catalog, checked by its own byte-level run).
 
 Exit status: 0 iff every gate passes; any committed inventory digit that does
 not re-verify is reported as an honest negative (the run_all_verifications
@@ -182,6 +193,26 @@ def main() -> None:
     res_literals = lit_s8_res + lit_s8_match + lit_s9_res + lit_s9_sum
     res_ok = bool(res_literals) and all(v == n_results for v in res_literals)
 
+    # (l) non-verify program catalog: on-disk *.py programs == §9 program rows,
+    #     and every §8 machinery invocation is one of those rows.  Gates (a)/(f)
+    #     check only the exists-on-disk direction; (l) closes the cross-
+    #     catalog set-agreement window (a program file added without a §9 row,
+    #     a §9 program row deleted while the file remains, or a §8 machinery
+    #     invocation pointing at a program undocumented in §9).  Non-empty
+    #     guards as elsewhere: a zero-set FAILS, never vacuous-passes.
+    prog_on_disk = sorted(p.name for p in pathlib.Path(".").glob("*.py")
+                          if not p.name.startswith("verify_"))
+    program_rows = sorted(p for p in rows
+                          if p.endswith(".py") and not p.startswith("verify_"))
+    machinery_progs = sorted(set(programs) - set(invoked))
+    prog_missing_from_s9 = sorted(set(prog_on_disk) - set(program_rows))
+    prog_not_on_disk = sorted(set(program_rows) - set(prog_on_disk))
+    mach_not_in_s9 = sorted(set(machinery_progs) - set(program_rows))
+    s9_only = sorted(set(program_rows) - set(machinery_progs))  # informational
+    prog_ok = (bool(prog_on_disk) and bool(program_rows) and bool(machinery_progs)
+               and not prog_missing_from_s9 and not prog_not_on_disk
+               and not mach_not_in_s9)
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -267,6 +298,16 @@ def main() -> None:
             f"({' + '.join(str(v) for v in res_literals) or 'none'}) "
             f"== derived on-disk {n_results}",
         ),
+        "(l) non-verify program catalog == §9 program rows ⊇ §8 machinery": (
+            prog_ok,
+            f"disk {len(prog_on_disk)} == §9 {len(program_rows)} program rows, "
+            f"§8 machinery {len(machinery_progs)} ⊆ §9 "
+            f"(on-disk w/o §9 row: {', '.join(prog_missing_from_s9) or 'none'}; "
+            f"§9 row w/o file: {', '.join(prog_not_on_disk) or 'none'}; "
+            f"§8 machinery not in §9: {', '.join(mach_not_in_s9) or 'none'}; "
+            f"§9-only, never invoked (informational): "
+            f"{', '.join(s9_only) or 'none'})",
+        ),
     }
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -283,6 +324,8 @@ def main() -> None:
     print(f"    §8 verify invocations    : {len(invoked)}")
     print(f"    §9 files-table verify rows: {len(verify_rows)}")
     print(f"    §8 programs invoked (existence gate (a)): {len(programs)}")
+    print(f"    non-verify *.py programs (disk == §9 program rows, gate (l)): {len(prog_on_disk)} "
+          f"== {len(program_rows)}")
     print(f"    results/ on disk == §9 results rows: {len(results_on_disk)} == {len(results_rows)}")
     print(f"    results-artifact prose literals gated by (k): {len(res_literals)} "
           f"({', '.join(str(v) for v in res_literals) or 'none'})")
@@ -300,7 +343,10 @@ def main() -> None:
               f"programs the §8 block invokes exists, all {n_items} §7 "
               f"residual-diagnostic items have a citing probe (none outside "
               f"1..{n_items}), all {len(rows)} §9 file rows exist, all "
-              f"{len(results_on_disk)} results/ artifacts are listed, and the "
+              f"{len(results_on_disk)} results/ artifacts are listed, the "
+              f"{len(prog_on_disk)} non-verify programs form one catalog "
+              f"across disk and §9 (with every §8 machinery invocation inside "
+              f"it), and the "
               f"three hand-bumped count literals plus README.md's six "
               f"verification-count sites, REPORT.md's two machinery "
               f"self-test literals and its results-artifact count literals "
