@@ -124,7 +124,30 @@ the filesystem, gating on every §8/§9 invariant:
       numeral, a missing token, or a second stray token FAILs, never
       vacuous-passes — this closes the last window of unguarded count
       literals in the verification catalog: (o) gated the §8 verdict lines
-      and the §9 dataset_provenance row, (p) gates the §9 row grand totals.
+      and the §9 dataset_provenance row, (p) gates the §9 row grand totals,
+      (q) gates the seven plain probes' §9 verdict-total numerals;
+  (q) the §9 Files-table verdict-total "N/N gates PASS" numerals on the
+      seven plain (non-SUMMARY-style) probe rows (o) and (p) do not touch:
+      verify_freerun_episode_within.py (5/5), verify_v1handbook_within.py
+      (6/6), verify_v2method_within.py (7/7), verify_housezone_audit.py
+      (4/4), verify_horizontrade_within.py (2/2), verify_horizonsplit_
+      within.py (4/4) and verify_metrictuple_within.py (6/6).  Each of
+      these probes prints exactly ONE countable gates block in its live
+      stdout — a "gates (...):" header line, one "(roman) ... : PASS" line
+      per gate, then a "verdict:" line — so the numeral IS derivable
+      read-only by RUNNING the probe and counting the gate lines between
+      the header and the verdict.  The gate-line regex is deliberately
+      tail-UNANCHORED (".*: PASS" with no end anchor) because housezone_
+      audit / horizontrade / metrictuple gate lines carry trailing
+      "  (held …)" annotations AFTER the ": PASS", and the block is
+      anchored at the "gates (" header so a probe's pre-header leg-B
+      "…: PASS" lines (housezone_audit prints 13) are never counted.  The
+      v1handbook / v2method rows carry TWO "N/N gates PASS" tokens (an
+      intermediate "N/N source-structural gates PASS" leg followed by the
+      verdict total), so the comparison uses last-total-token semantics:
+      each row needs >= 1 token and its LAST token must equal the live
+      gate-line count — zero tokens, a stale last token, or a stray later
+      token FAILs, never vacuous-passes.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -441,6 +464,70 @@ def main() -> None:
         for lab, prs, _p in _p_sites)
     p_detail += f" ({len(_p_sites)} sites, single-match-each {'OK' if p_ok else 'FAIL'})"
 
+    # (q) §9 verdict-total "N/N gates PASS" numerals on the seven plain
+    #     (non-SUMMARY-style) probe rows (o)/(p) do not touch.  Each prints
+    #     exactly ONE countable gates block in live stdout: a "gates ("
+    #     header line, one "(roman) ... : PASS" line per gate, then a
+    #     "verdict:" line — so the count IS derive-able read-only by RUNNING
+    #     the probe.  The gate-line regex is tail-UNANCHORED (".*: PASS",
+    #     no end anchor) because housezone_audit / horizontrade / metrictuple
+    #     gate lines carry trailing "  (held …)" annotations AFTER the
+    #     ": PASS"; the block is anchored at the "gates (" header so pre-
+    #     header leg-B "…: PASS" lines (housezone_audit prints 13) are never
+    #     counted.  v1handbook / v2method rows carry TWO "N/N gates PASS"
+    #     tokens (an intermediate "N/N source-structural gates PASS" leg +
+    #     the verdict total), so the comparison is last-total-token: >= 1
+    #     token and the LAST one must equal the live count — zero tokens, a
+    #     stale last token, or a stray later token FAILs, never vacuous-passes.
+    _q_probes = ("verify_freerun_episode_within.py",
+                 "verify_v1handbook_within.py", "verify_v2method_within.py",
+                 "verify_housezone_audit.py", "verify_horizontrade_within.py",
+                 "verify_horizonsplit_within.py", "verify_metrictuple_within.py")
+    _q_lab = {"verify_freerun_episode_within.py": "freerun_episode",
+              "verify_v1handbook_within.py": "v1handbook",
+              "verify_v2method_within.py": "v2method",
+              "verify_housezone_audit.py": "housezone_audit",
+              "verify_horizontrade_within.py": "horizontrade",
+              "verify_horizonsplit_within.py": "horizonsplit",
+              "verify_metrictuple_within.py": "metrictuple"}
+    _q_lines_re = re.compile(r"^\s*\(([ivxlcdm]+)\)\s+.*: PASS")
+    _q_qs_re = re.compile(r"^\s*gates\s*\(")
+    _q_verdict_re = re.compile(r"^\s*verdict\s*:")
+    _q_counts = {}
+    for _p in _q_probes:
+        _r = subprocess.run([sys.executable, _p], cwd=_root,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=1800)
+        _lines = _r.stdout.splitlines()
+        _start = next((i for i, ln in enumerate(_lines)
+                       if _q_qs_re.match(ln)), None)
+        if _start is None:
+            _q_counts[_p] = -1  # missing gates header -> FAIL, not vacuous
+            continue
+        _end = next((i for i in range(_start + 1, len(_lines))
+                     if _q_verdict_re.match(_lines[i])), None)
+        if _end is None:
+            _q_counts[_p] = -1  # missing verdict line -> FAIL
+            continue
+        _q_counts[_p] = sum(1 for ln in _lines[_start:_end]
+                            if _q_lines_re.match(ln))
+    _q_sites = []
+    for _p in _q_probes:
+        _toks = re.findall(
+            rf"^\|\s*`{re.escape(_p)}`[^\n]*?(\d+)/(\d+) gates PASS",
+            sec9, re.M)
+        _q_sites.append((f"§9 {_q_lab[_p]}", _toks, _p))
+    q_ok = all(len(toks) >= 1
+               and int(toks[-1][0]) == _q_counts[p]
+               and int(toks[-1][1]) == _q_counts[p]
+               for _, toks, p in _q_sites)
+    q_detail = "; ".join(
+        f"{lab} {toks[-1][0] + '/' + toks[-1][1] if len(toks) >= 1 else 'missing'} "
+        f"{'==' if len(toks) >= 1 and int(toks[-1][0]) == _q_counts[p] and int(toks[-1][1]) == _q_counts[p] else '!='} "
+        f"live {_q_counts[p]} ({len(toks)} token(s))"
+        for lab, toks, p in _q_sites)
+    q_detail += f" ({len(_q_sites)} sites, last-token-each {'OK' if q_ok else 'FAIL'})"
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -538,12 +625,12 @@ def main() -> None:
         ),
     }
 
-    # (m), (n), (o) and (p) appended AFTER the dict: (m)'s "N/N gates PASS"
-    #     numeral must equal the TOTAL gate count including all four appends
-    #     (len + 4 while the dict holds the a..l gates), and each of the two
-    #     self-description lines must carry EXACTLY ONE "N/N gates PASS" token
-    #     (findall — a missing site or a stray second token FAILs); (n) then
-    #     gates the same two lines' PROSE numerals (50 probes / 45 items / 14
+    # (m), (n), (o), (p) and (q) appended AFTER the dict: (m)'s "N/N gates
+    #     PASS" numeral must equal the TOTAL gate count including all five
+    #     appends (len + 5 while the dict holds the a..l gates), and each of
+    #     the two self-description lines must carry EXACTLY ONE "N/N gates
+    #     PASS" token (findall — a missing site or a stray second token
+    #     FAILs); (n) then gates the same two lines' PROSE numerals (50 probes / 45 items / 14
     #     programs / checks 53) against the derived counts; (o) gates the four
     #     neighbouring read-only probes' OWN verdict numerals against their
     #     subprocess-derived live gate totals (this probe's total is NOT used
@@ -555,7 +642,7 @@ def main() -> None:
     #     digits inside those same rows are not matched) on the four SUMMARY-
     #     style probe rows (o) does not cover — fabricmass/solar/
     #     selection_cv/negativecontrols — against the same live totals.
-    n_gates = len(gates) + 4
+    n_gates = len(gates) + 5
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -590,6 +677,10 @@ def main() -> None:
     gates["(p) §9 grand-total 'N/N total' numerals == live totals"] = (
         p_ok,
         p_detail,
+    )
+    gates["(q) §9 plain-probe verdict-total numerals == gate-line counts"] = (
+        q_ok,
+        q_detail,
     )
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -638,6 +729,11 @@ def main() -> None:
           + ", ".join(f"{_p_lab[_p]} {_live[_p]}"
                       for _p in _p_probes)
           + f") : {'OK' if p_ok else 'FAIL'}")
+    print(f"    §9 plain-probe verdict-total numerals gated by (q): "
+          f"{len(_q_sites)} sites "
+          + ", ".join(f"{_q_lab[_p]} {_q_counts[_p]}"
+                      for _p in _q_probes)
+          + f") : {'OK' if q_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -669,7 +765,17 @@ def main() -> None:
               f"Files-table grand-total 'N/N total' numerals on the four "
               f"SUMMARY-style probe rows re-verify against the same live "
               f"totals (fabricmass {_live['verify_fabricmass_within.py']}, "
-              f"same solar/selection_cv/negativecontrols), and REPORT.md's own "
+              f"same solar/selection_cv/negativecontrols), the §9 "
+              f"verdict-total 'N/N gates PASS' numerals on the seven plain "
+              f"probe rows re-verify against their live gate-line counts "
+              f"(freerun_episode {_q_counts['verify_freerun_episode_within.py']}, "
+              f"v1handbook {_q_counts['verify_v1handbook_within.py']}, "
+              f"v2method {_q_counts['verify_v2method_within.py']}, "
+              f"housezone_audit {_q_counts['verify_housezone_audit.py']}, "
+              f"horizontrade {_q_counts['verify_horizontrade_within.py']}, "
+              f"horizonsplit {_q_counts['verify_horizonsplit_within.py']}, "
+              f"metrictuple {_q_counts['verify_metrictuple_within.py']}), "
+              f"and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
               f"numerals — {n} probes, {n_items} §7 items, {n_progs} "
