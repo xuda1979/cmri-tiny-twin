@@ -75,6 +75,19 @@ the filesystem, gating on every §8/§9 invariant:
       applied to the report's description of the probe itself, which the
       probe can verify read-only against its own gate count.  A missing
       self-description site FAILs, never vacuous-passes;
+  (n) this probe's self-description PROSE numerals, on the same two lines
+      (m) gates: the probe count ("50 verify probes" on the §8 line, "(50
+      probes across all three)" on the §9 row), the §7 item count ("all 45
+      §7 items" / "all 45 §7 residual-diagnostic items", both equal to the
+      derived bold-item count), the non-verify program count ("the 14
+      non-verify programs"), and the §9 row's checks breakdown
+      "(checks 53 == 3 self-tests + 50 probes, probes 50, self-tests 3,
+      last-run 53)" (checks/self-tests/probes all equal to the runner-
+      derived totals).  These digits are hand-bumped on the report's
+      description of the probe itself and are all derivable read-only, so
+      they cannot drift without this gate failing.  Each scoped regex must
+      find its site — a numeral removed from the prose FAILs, never
+      vacuous-passes;
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -242,6 +255,54 @@ def main() -> None:
         r"^\|\s*`verify_report_inventory\.py`[^\n]*?(\d+)/(\d+) gates PASS",
         sec9, re.M)
 
+    # (n) this probe's self-description PROSE numerals, on the same two
+    #     lines gate (m) scopes (captured in full so the scoped regexes
+    #     below cannot collide with neighbouring probes' lines): the probe
+    #     count ("50 verify probes" §8 / "(50 probes across all three)"
+    #     §9), the §7 bold-item count ("all 45 §7 items" §8 / "all 45 §7
+    #     residual-diagnostic items" §9) and its "1..45" range endpoint,
+    #     the non-verify program count ("the 14 non-verify programs" on
+    #     both), and the §9 row's checks breakdown "(checks 53 == 3
+    #     self-tests + 50 probes, probes 50, self-tests 3, last-run 53)".
+    #     Each is derivable read-only from the derived totals above and is
+    #     hand-bumped in the report's account of this probe — same drift
+    #     class as (m).  Every scoped site must carry exactly one numeral;
+    #     a missing site or a stray second match FAILs, never
+    #     vacuous-passes.
+    s8_full = re.findall(r"^python3 verify_report_inventory\.py[^\n]*$",
+                         block, re.M)
+    s9_full = re.findall(r"^\|\s*`verify_report_inventory\.py`[^\n]*$",
+                         sec9, re.M)
+    line_s8 = s8_full[0] if s8_full else ""
+    line_s9 = s9_full[0] if s9_full else ""
+    n_progs = len(prog_on_disk)
+    s8_probes = re.findall(r"(\d+) verify probes", line_s8)
+    s9_probes = re.findall(r"\((\d+) probes across all three\)", line_s9)
+    s8_items = re.findall(r"all (\d+) §7 items", line_s8)
+    s9_items = re.findall(r"all (\d+) §7 residual-diagnostic items", line_s9)
+    s8_range = re.findall(r"none outside (\d+)\.\.(\d+)", line_s8)
+    s9_range = re.findall(r"none outside (\d+)\.\.(\d+)", line_s9)
+    s8_progs = re.findall(r"the (\d+) non-verify programs", line_s8)
+    s9_progs = re.findall(r"the (\d+) non-verify programs", line_s9)
+    s9_break = re.findall(
+        r"checks (\d+) == (\d+) self-tests \+ (\d+) probes, "
+        r"probes (\d+), self-tests (\d+), last-run (\d+)", line_s9)
+    prose_ok = (
+        len(s8_probes) == 1 and int(s8_probes[0]) == n
+        and len(s9_probes) == 1 and int(s9_probes[0]) == n
+        and len(s8_items) == 1 and int(s8_items[0]) == n_items
+        and len(s9_items) == 1 and int(s9_items[0]) == n_items
+        and len(s8_range) == 1 and int(s8_range[0][0]) == 1
+        and int(s8_range[0][1]) == n_items
+        and len(s9_range) == 1 and int(s9_range[0][0]) == 1
+        and int(s9_range[0][1]) == n_items
+        and len(s8_progs) == 1 and int(s8_progs[0]) == n_progs
+        and len(s9_progs) == 1 and int(s9_progs[0]) == n_progs
+        and len(s9_break) == 1
+        and [int(v) for v in s9_break[0]]
+        == [n_checks, n_selftests, n, n, n_selftests, n_checks]
+    )
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -339,11 +400,14 @@ def main() -> None:
         ),
     }
 
-    # (m) appended AFTER the dict: its numeral must equal the TOTAL gate count
-    #     including (m) itself (len + 1 while the dict holds the a..l gates),
-    #     and each of the two self-description lines must carry EXACTLY ONE
-    #     token (findall — a missing site or a stray second token FAILs).
-    n_gates = len(gates) + 1
+    # (m) and (n) appended AFTER the dict: (m)'s "N/N gates PASS" numeral must
+    #     equal the TOTAL gate count including both appends (len + 2 while the
+    #     dict holds the a..l gates), and each of the two self-description
+    #     lines must carry EXACTLY ONE "N/N gates PASS" token (findall — a
+    #     missing site or a stray second token FAILs); (n) then gates the same
+    #     two lines' PROSE numerals (50 probes / 45 items / 14 programs /
+    #     checks 53) against the derived counts.
+    n_gates = len(gates) + 2
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -356,6 +420,20 @@ def main() -> None:
         f"== derived {n_gates} gates "
         f"({len(self_all)} token(s), N/N parity "
         f"{'OK' if self_parity else 'FAIL'})",
+    )
+    gates["(n) self-description prose numerals == derived totals"] = (
+        prose_ok,
+        f"§8 probes {s8_probes[0] if len(s8_probes) == 1 else '?'} == {n}, "
+        f"items {s8_items[0] if len(s8_items) == 1 else '?'} == {n_items} "
+        f"(range 1..{s8_range[0][1] if len(s8_range) == 1 else '?'}), "
+        f"programs {s8_progs[0] if len(s8_progs) == 1 else '?'} == {n_progs}; "
+        f"§9 probes {s9_probes[0] if len(s9_probes) == 1 else '?'} == {n}, "
+        f"items {s9_items[0] if len(s9_items) == 1 else '?'} == {n_items} "
+        f"(range 1..{s9_range[0][1] if len(s9_range) == 1 else '?'}), "
+        f"programs {s9_progs[0] if len(s9_progs) == 1 else '?'} == {n_progs}, "
+        f"breakdown {'/'.join(s9_break[0]) if s9_break else 'missing'} "
+        f"== checks {n_checks} = {n_selftests} self-tests + {n} probes "
+        f"(9 sites, single-match-each {'OK' if prose_ok else 'FAIL'})",
     )
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -380,6 +458,21 @@ def main() -> None:
     print(f"    self-description 'N/N gates PASS' tokens gated by (m): {len(self_all)} "
           f"({' + '.join(num + '/' + den for num, den in self_all) or 'none'}) "
           f"== derived {n_gates} gates")
+    n_sites = (len(s8_probes) + len(s9_probes) + len(s8_items) + len(s9_items)
+               + len(s8_range) + len(s9_range) + len(s8_progs) + len(s9_progs)
+               + len(s9_break))
+    print(f"    self-description prose numerals gated by (n): {n_sites} sites "
+          f"(probes {s8_probes[0] if len(s8_probes) == 1 else '?'} §8 / "
+          f"{s9_probes[0] if len(s9_probes) == 1 else '?'} §9, items "
+          f"{s8_items[0] if len(s8_items) == 1 else '?'}/"
+          f"{s9_items[0] if len(s9_items) == 1 else '?'} == {n_items} "
+          f"(ranges 1..{s8_range[0][1] if len(s8_range) == 1 else '?'} / "
+          f"1..{s9_range[0][1] if len(s9_range) == 1 else '?'}), programs "
+          f"{s8_progs[0] if len(s8_progs) == 1 else '?'}/"
+          f"{s9_progs[0] if len(s9_progs) == 1 else '?'} == {n_progs}, §9 "
+          f"breakdown {'/'.join(s9_break[0]) if s9_break else 'missing'} "
+          f"== checks {n_checks} = {n_selftests} self-tests + {n} probes) "
+          f": {'OK' if prose_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -403,8 +496,11 @@ def main() -> None:
               f"self-test literals and its results-artifact count literals "
               f"cannot drift from the derived count, and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
-              f"on both its §8 machinery line and its §9 row) re-verifies "
-              f"against the derived gate total.")
+              f"on both its §8 machinery line and its §9 row, whose prose "
+              f"numerals — {n} probes, {n_items} §7 items, {n_progs} "
+              f"non-verify programs, checks {n_checks} == {n_selftests} "
+              f"self-tests + {n} probes — all match the derived totals) "
+              f"re-verifies against the derived gate total.")
     else:
         print(f"verdict: FAIL — the following committed inventory invariant(s) "
               f"did NOT re-verify: "
