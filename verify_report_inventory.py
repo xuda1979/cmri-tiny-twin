@@ -108,6 +108,23 @@ the filesystem, gating on every §8/§9 invariant:
       must equal the run-derived total; a missing numeral, a stray second
       token, or a numeral stale from a probe-gate change FAILs, never
       vacuous-passes;
+  (p) the §9 Files-table GRAND-TOTAL prose numerals on the four SUMMARY-
+      style probe rows that (o) does NOT cover — verify_fabricmass_within.py,
+      verify_solar_within.py, verify_selection_cv_within.py, and verify_
+      negativecontrols_within.py each end their row with a bold "N/N total"
+      grand total (31/31, 44/44, 45/45 and 34/34 today) that sums their leg
+      verdicts.  The discriminator is the literal "total" suffix: those rows
+      also carry "X/Y gates PASS" leg sub-totals (4/4, 8/8, 12/12, 6/6,
+      3/3, 5/5, 7/7) that a "N/N total" pattern does NOT match, so each row
+      must carry EXACTLY ONE "N/N total" token (a stray sub-total digit is
+      not a false pass).  Each must equal its probe's OWN live gate total,
+      re-derived with the same read-only subprocess run as (o) — all four
+      are SUMMARY-style probes whose printed "=== SUMMARY: N/N gates PASS
+      ===" denominator is the exact total.  A hand-bump to any grand-total
+      numeral, a missing token, or a second stray token FAILs, never
+      vacuous-passes — this closes the last window of unguarded count
+      literals in the verification catalog: (o) gated the §8 verdict lines
+      and the §9 dataset_provenance row, (p) gates the §9 row grand totals.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -344,9 +361,14 @@ def main() -> None:
     _root = pathlib.Path(__file__).parent
     _sum_re = re.compile(r"=== SUMMARY: (\d+)/(\d+) gates PASS ===")
     _live = {}
+    # fabricmass joins the live-total derivation for gate (p) — it is NOT in
+    # _sh below because (o)'s §8 loop would then demand a verdict token on the
+    # fabricmass §8 line, which has none; its §9 grand-total numeral is gated
+    # only by (p).
     for _p in ("verify_dataset_provenance.py", "verify_solar_within.py",
                "verify_selection_cv_within.py",
-               "verify_negativecontrols_within.py"):
+               "verify_negativecontrols_within.py",
+               "verify_fabricmass_within.py"):
         _r = subprocess.run([sys.executable, _p], cwd=_root,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, timeout=1800)
@@ -380,6 +402,44 @@ def main() -> None:
         f"live {_live[p]}"
         for lab, prs, p in _o_sites)
     o_detail += f" ({len(_o_sites)} sites, single-match-each {'OK' if o_ok else 'FAIL'})"
+
+    # (p) §9 Files-table GRAND-TOTAL "N/N total" numerals on the four SUMMARY-
+    #     style probe rows (o) does not cover (o) matches only §8 lines + the
+    #     §9 dataset_provenance row and its "gates PASS" token pattern): each
+    #     of the four rows ends with a bold "N/N total" grand total that must
+    #     equal that probe's live gate total from the SAME subprocess run as
+    #     (o).  The four probes are exactly the SUMMARY-style ones in _live
+    #     other than dataset_provenance (which prints no SUMMARY line and whose
+    #     §9 row "11/11 gates PASS" token is already gated by (o)); fabricmass
+    #     is NOT in _sh because (o)'s §8 line loop would then require a verdict
+    #     token on §8 line 604, which has none.  The regex matches the literal
+    #     "total" suffix so the many "X/Y gates PASS" / bare "X/Y" leg sub-total
+    #     digits inside these same rows are NOT false positives; each row must
+    #     carry EXACTLY ONE "N/N total" token (findall len==1 guard) so a
+    #     missing grand total, a stale numeral, or a stray second token FAILs,
+    #     never vacuous-passes.
+    _p_probes = ("verify_fabricmass_within.py", "verify_solar_within.py",
+                 "verify_selection_cv_within.py",
+                 "verify_negativecontrols_within.py")
+    _p_lab = {"verify_fabricmass_within.py": "fabricmass",
+              "verify_solar_within.py": "solar",
+              "verify_selection_cv_within.py": "selection_cv",
+              "verify_negativecontrols_within.py": "negativecontrols"}
+    _p_sites = []
+    for _p in _p_probes:
+        _prs = re.findall(
+            rf"^\|\s*`{re.escape(_p)}`[^\n]*?(\d+)/(\d+) total",
+            sec9, re.M)
+        _p_sites.append((f"§9 {_p_lab[_p]}", _prs, _p))
+    p_ok = all(len(prs) == 1
+               and int(prs[0][0]) == _live[_p] and int(prs[0][1]) == _live[_p]
+               for _, prs, _p in _p_sites)
+    p_detail = "; ".join(
+        f"{lab} {prs[0][0] + '/' + prs[0][1] if len(prs) == 1 else ('missing' if not prs else 'multi: ' + str(len(prs)))} "
+        f"{'==' if len(prs) == 1 and int(prs[0][0]) == _live[_p] and int(prs[0][1]) == _live[_p] else '!='} "
+        f"live {_live[_p]}"
+        for lab, prs, _p in _p_sites)
+    p_detail += f" ({len(_p_sites)} sites, single-match-each {'OK' if p_ok else 'FAIL'})"
 
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
@@ -478,10 +538,10 @@ def main() -> None:
         ),
     }
 
-    # (m), (n) and (o) appended AFTER the dict: (m)'s "N/N gates PASS" numeral
-    #     must equal the TOTAL gate count including all three appends (len + 3
-    #     while the dict holds the a..l gates), and each of the two self-
-    #     description lines must carry EXACTLY ONE "N/N gates PASS" token
+    # (m), (n), (o) and (p) appended AFTER the dict: (m)'s "N/N gates PASS"
+    #     numeral must equal the TOTAL gate count including all four appends
+    #     (len + 4 while the dict holds the a..l gates), and each of the two
+    #     self-description lines must carry EXACTLY ONE "N/N gates PASS" token
     #     (findall — a missing site or a stray second token FAILs); (n) then
     #     gates the same two lines' PROSE numerals (50 probes / 45 items / 14
     #     programs / checks 53) against the derived counts; (o) gates the four
@@ -489,8 +549,13 @@ def main() -> None:
     #     subprocess-derived live gate totals (this probe's total is NOT used
     #     there — the §8 lines for solar/selection/negativecontrols and the
     #     §8 line + §9 row for dataset_provenance carry N/N tokens whose N is
-    #     that probe's gate count, derived by running the probe).
-    n_gates = len(gates) + 3
+    #     that probe's gate count, derived by running the probe); (p) gates
+    #     the §9 Files-table GRAND-TOTAL "N/N total" numerals (with the literal
+    #     "total" suffix, so the many "X/Y gates PASS"/bare "X/Y" leg sub-total
+    #     digits inside those same rows are not matched) on the four SUMMARY-
+    #     style probe rows (o) does not cover — fabricmass/solar/
+    #     selection_cv/negativecontrols — against the same live totals.
+    n_gates = len(gates) + 4
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -521,6 +586,10 @@ def main() -> None:
     gates["(o) neighbouring probes' verdict numerals == their live totals"] = (
         o_ok,
         o_detail,
+    )
+    gates["(p) §9 grand-total 'N/N total' numerals == live totals"] = (
+        p_ok,
+        p_detail,
     )
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -564,6 +633,11 @@ def main() -> None:
           f"{len(_o_sites)} sites (live totals by subprocess run: "
           + ", ".join(f"{_sh[_p]} {_live[_p]}" for _p in _sh)
           + f") : {'OK' if o_ok else 'FAIL'}")
+    print(f"    §9 grand-total 'N/N total' numerals gated by (p): "
+          f"{len(_p_sites)} sites "
+          + ", ".join(f"{_p_lab[_p]} {_live[_p]}"
+                      for _p in _p_probes)
+          + f") : {'OK' if p_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -591,7 +665,11 @@ def main() -> None:
               f"{_live['verify_dataset_provenance.py']}, solar "
               f"{_live['verify_solar_within.py']}, selection_cv "
               f"{_live['verify_selection_cv_within.py']}, negativecontrols "
-              f"{_live['verify_negativecontrols_within.py']}), and REPORT.md's own "
+              f"{_live['verify_negativecontrols_within.py']}), the §9 "
+              f"Files-table grand-total 'N/N total' numerals on the four "
+              f"SUMMARY-style probe rows re-verify against the same live "
+              f"totals (fabricmass {_live['verify_fabricmass_within.py']}, "
+              f"same solar/selection_cv/negativecontrols), and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
               f"numerals — {n} probes, {n_items} §7 items, {n_progs} "
