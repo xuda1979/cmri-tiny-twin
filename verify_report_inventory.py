@@ -66,7 +66,15 @@ the filesystem, gating on every §8/§9 invariant:
       one of those §9 program rows (the §8→§9 inclusion direction, so a
       machinery invocation can never point at a program undocumented in
       §9).  Gates (a) and (f) each check only the exists-on-disk direction
-      of their catalogs; (l) closes the cross-catalog set-agreement window.
+      of their catalogs; (l) closes the cross-catalog set-agreement window;
+  (m) this probe's OWN self-description: the "N/N gates PASS (§8, §9)"
+      numerals on its §8 machinery line and its §9 Files row (REPORT.md's
+      account of how many gates this probe runs) must equal this probe's
+      derived gate total.  Those digits were hand-bumped in every gate
+      commit - exactly the drift class this probe exists to catch, now
+      applied to the report's description of the probe itself, which the
+      probe can verify read-only against its own gate count.  A missing
+      self-description site FAILs, never vacuous-passes;
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -213,6 +221,27 @@ def main() -> None:
                and not prog_missing_from_s9 and not prog_not_on_disk
                and not mach_not_in_s9)
 
+    # (m) this probe's OWN self-description: REPORT.md's account of this probe
+    #     (its §8 machinery line and its §9 Files row) ends in a hand-bumped
+    #     "N/N gates PASS (§8, §9)" numeral that reported the gate total at
+    #     prose-write time — bumped in EVERY gate commit.  Derivable read-only
+    #     from inside the probe: N must equal the derived gate total (len(gates)
+    #     once (m) itself is included), so adding/removing a gate without the
+    #     coordinated report bump fails here.  Non-empty guards: a missing or
+    #     numeral-less self-description site FAILs, never vacuous-passes.
+    #     re.findall over the two targeted scopes like gates (j)/(k): each
+    #     self-description line must carry EXACTLY ONE "N/N gates PASS" token
+    #     and every one must equal the derived total (a stray second token on
+    #     either line is as much a drift as a wrong numeral).  Verified against
+    #     the neighbouring probe lines' "N/N gates" numerals (lines 614/615/616
+    #     etc.), which do not collide with these two lines' single tokens.
+    self_s8 = re.findall(
+        r"^python3 verify_report_inventory\.py[^\n]*?(\d+)/(\d+) gates PASS",
+        block, re.M)
+    self_s9 = re.findall(
+        r"^\|\s*`verify_report_inventory\.py`[^\n]*?(\d+)/(\d+) gates PASS",
+        sec9, re.M)
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -310,6 +339,25 @@ def main() -> None:
         ),
     }
 
+    # (m) appended AFTER the dict: its numeral must equal the TOTAL gate count
+    #     including (m) itself (len + 1 while the dict holds the a..l gates),
+    #     and each of the two self-description lines must carry EXACTLY ONE
+    #     token (findall — a missing site or a stray second token FAILs).
+    n_gates = len(gates) + 1
+    self_all = self_s8 + self_s9
+    self_parity = (self_all
+                   and all(num == den for num, den in self_all)
+                   and all(int(num) == n_gates for num, _ in self_all))
+    self_ok = self_parity
+    gates["(m) self-description 'N/N gates PASS' literals == derived gate total"] = (
+        self_ok,
+        f"§8 line {(self_s8[0][0] + '/' + self_s8[0][1]) if self_s8 else 'missing'}, "
+        f"§9 row {(self_s9[0][0] + '/' + self_s9[0][1]) if self_s9 else 'missing'} "
+        f"== derived {n_gates} gates "
+        f"({len(self_all)} token(s), N/N parity "
+        f"{'OK' if self_parity else 'FAIL'})",
+    )
+
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
           "re-derivation of the reproducibility catalog from REPORT.md + "
           "run_all_verifications.py + README.md + the filesystem; "
@@ -329,6 +377,9 @@ def main() -> None:
     print(f"    results/ on disk == §9 results rows: {len(results_on_disk)} == {len(results_rows)}")
     print(f"    results-artifact prose literals gated by (k): {len(res_literals)} "
           f"({', '.join(str(v) for v in res_literals) or 'none'})")
+    print(f"    self-description 'N/N gates PASS' tokens gated by (m): {len(self_all)} "
+          f"({' + '.join(num + '/' + den for num, den in self_all) or 'none'}) "
+          f"== derived {n_gates} gates")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -350,7 +401,10 @@ def main() -> None:
               f"three hand-bumped count literals plus README.md's six "
               f"verification-count sites, REPORT.md's two machinery "
               f"self-test literals and its results-artifact count literals "
-              f"cannot drift from the derived count.")
+              f"cannot drift from the derived count, and REPORT.md's own "
+              f"description of this probe ({n_gates}/{n_gates} gates PASS "
+              f"on both its §8 machinery line and its §9 row) re-verifies "
+              f"against the derived gate total.")
     else:
         print(f"verdict: FAIL — the following committed inventory invariant(s) "
               f"did NOT re-verify: "
