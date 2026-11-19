@@ -171,7 +171,28 @@ the filesystem, gating on every §8/§9 invariant:
       samples", "5,921 samples", "600 s"); every scoped site must match
       once (exactly one occurrence per bullet) and equal the derived
       value — a stale digit, a missing site, or a stray second match
-      FAILs, never vacuous-passes.
+      FAILs, never vacuous-passes;
+  (s) the §7 residual-diagnostics body-prose VERDICT-TOTAL numerals — the
+      six summary bullets that close with an overall "N/N gates PASS"
+      verdict (REPORT.md lines 450/457/464/471/539/548 at the time of
+      writing: housezone_audit "4/4", horizontrade "2/2", marginthin
+      "1/3", metrictuple "6/6", selection_cv "(45/45 gates PASS)",
+      negativecontrols "(34/34 gates PASS)") — must equal the citing
+      probe's LIVE gate-line count: the "gates ("-to-"verdict:" block
+      gate count, with the denominator matching "(: (PASS|FAIL)" — a
+      ": PASS"-only matcher would wrongly derive marginthin as 1/1 when
+      its gates ii/iii are FAIL lines — and the numerator matching only
+      the ": PASS" lines (so marginthin honestly yields 1/3).  The four
+      block-style probes (housezone_audit 4, horizontrade 2, marginthin 1,
+      metrictuple 6) are subprocess-derived like (q); the two
+      SUMMARY-style probes (selection_cv 45, negativecontrols 34) print
+      no gate block, so their pass==total reuses the SAME live totals (o)
+      derived by running them.  Gates (a)-(r) cover only the §8/§9
+      catalog, the §1/§2.3 provenance prose, and this probe's own self-
+      description; nothing before (s) ties the §7 residual-diagnostic
+      verdicts' own totals to the gate lines the probes actually ran —
+      a probe-gate change without the body-bullet bump FAILs, never
+      vacuous-passes.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -715,10 +736,11 @@ def main() -> None:
         ),
     }
 
-    # (m), (n), (o), (p), (q) and (r) appended AFTER the dict: (m)'s "N/N
+    # (m), (n), (o), (p), (q), (r) and (s) appended AFTER the dict: (m)'s
+    #     "N/N
     #     gates
-    #     PASS" numeral must equal the TOTAL gate count including all six
-    #     appends (len + 6 while the dict holds the a..l gates), and each of
+    #     PASS" numeral must equal the TOTAL gate count including all seven
+    #     appends (len + 7 while the dict holds the a..l gates), and each of
     #     the two self-description lines must carry EXACTLY ONE "N/N gates
     #     PASS" token (findall — a missing site or a stray second token
     #     FAILs); (n) then gates the same two lines' PROSE numerals (50 probes / 45 items / 14
@@ -735,7 +757,7 @@ def main() -> None:
     #     selection_cv/negativecontrols — against the same live totals;
     #     (r) gates the §1/§2.3 dataset-provenance prose numerals against a
     #     read-only derivation from data/energydata_complete.csv.
-    n_gates = len(gates) + 6
+    n_gates = len(gates) + 7
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -780,7 +802,102 @@ def main() -> None:
         _r_detail,
     )
 
-    print("§8/§9 report-inventory consistency probe (deterministic read-only "
+    # (s) the §7 residual-diagnostics BODY-PROSE verdict-total numerals (the
+    #     six summary bullets closing with an overall "N/N gates PASS": §7
+    #     items 32/33/34/35/44/45 at REPORT.md lines 450/457/464/471/539/548)
+    #     must equal the citing probe's LIVE gate-line count.  Four probes
+    #     are block-style ((q) format: a "gates (" header, one "(roman)
+    #     ... : MARK" line per gate, a "verdict:" line) and are subprocess-
+    #     derived here like (q) — but the pass-count uses a ": PASS"-tail
+    #     matcher while the TOTAL uses a ": (PASS|FAIL)" matcher, because
+    #     marginthin's gates ii/iii are FAIL lines: a ": PASS"-only matcher
+    #     would wrongly derive marginthin as 1/1 when its honest verdict is
+    #     1/3.  housezone_audit / horizontrade / metrictuple gate lines
+    #     carry trailing "  (held …)" annotations, so the block matcher is
+    #     tail-UNANCHORED as in (q).  The two SUMMARY-style probes
+    #     (selection_cv, negativecontrols) print no gate block, so their
+    #     pass==total reuses the SAME live totals gate (o) derived by
+    #     running them.  Each report site is a ^-anchored bullet-form regex
+    #     with disambiguating prose context (so the identical §8/§9
+    #     machine-line tokens cannot collide) that must match EXACTLY once
+    #     and equal (pass_count, total_count) — a stale numeral, a missing
+    #     bullet, or a stray second match FAILs, never vacuous-passes.
+    _s_probes = ("verify_housezone_audit.py", "verify_horizontrade_within.py",
+                 "verify_marginthin_within.py", "verify_metrictuple_within.py")
+    _s_lab = {"verify_housezone_audit.py": "housezone_audit",
+              "verify_horizontrade_within.py": "horizontrade",
+              "verify_marginthin_within.py": "marginthin",
+              "verify_metrictuple_within.py": "metrictuple",
+              "verify_selection_cv_within.py": "selection_cv",
+              "verify_negativecontrols_within.py": "negativecontrols"}
+    _s_pass_re = re.compile(r"^\s*\(([ivxlcdm]+)\)\s+.*: PASS")
+    _s_any_re = re.compile(r"^\s*\(([ivxlcdm]+)\)\s+.*: (PASS|FAIL)")
+    _s_counts = {}
+    for _p in _s_probes:
+        _r = subprocess.run([sys.executable, _p], cwd=_root,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=1800)
+        _lines = _r.stdout.splitlines()
+        _start = next((i for i, ln in enumerate(_lines)
+                       if _q_qs_re.match(ln)), None)
+        if _start is None:
+            _s_counts[_p] = (-1, -1)  # missing gates header -> FAIL, not vacuous
+            continue
+        _end = next((i for i in range(_start + 1, len(_lines))
+                     if _q_verdict_re.match(_lines[i])), None)
+        if _end is None:
+            _s_counts[_p] = (-1, -1)  # missing verdict line -> FAIL
+            continue
+        _blk = _lines[_start:_end]
+        _s_counts[_p] = (sum(1 for ln in _blk if _s_pass_re.match(ln)),
+                         sum(1 for ln in _blk if _s_any_re.match(ln)))
+    for _p in ("verify_selection_cv_within.py",
+               "verify_negativecontrols_within.py"):
+        _s_counts[_p] = (_live[_p], _live[_p])
+    _s_rx = {
+        "verify_housezone_audit.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2743 resync steps \+ 2762 free-run steps\):[^\n]*?"
+            r"(\d+)/(\d+) gates PASS",
+        "verify_horizontrade_within.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2743\):\*\* the three-config band table[^\n]*?"
+            r"(\d+)/(\d+) gates PASS",
+        "verify_marginthin_within.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2743\):\*\* v2 reference mean \|e\| 0\.4277[^\n]*?"
+            r"(\d+)/(\d+) gates PASS",
+        "verify_metrictuple_within.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2743 resync / 2762 freerun\):[^\n]*?"
+            r"(\d+)/(\d+) gates PASS",
+        "verify_selection_cv_within.py":
+            r"^\*\*Bottom line:\*\*[^\n]*?rather than a gateable process "
+            r"claim \((\d+)/(\d+) gates PASS\)",
+        "verify_negativecontrols_within.py":
+            r'^\*\*Bottom line:\*\*[^\n]*?"irreducible reference" label '
+            r"disclosed as an interpretation, not gated "
+            r"\((\d+)/(\d+) gates PASS\)",
+    }
+    _s_sites = []
+    for _p in _s_counts:
+        _toks = re.findall(_s_rx[_p], text, re.M)
+        _s_sites.append((f"§7 {_s_lab[_p]}", _toks, _p))
+    s_ok = all(len(toks) == 1
+               and (int(toks[0][0]), int(toks[0][1])) == _s_counts[p]
+               for _, toks, p in _s_sites)
+    s_detail = "; ".join(
+        f"{lab} {toks[0][0] + '/' + toks[0][1] if len(toks) == 1 else ('missing' if not toks else 'multi: ' + str(len(toks)))} "
+        f"{'==' if len(toks) == 1 and (int(toks[0][0]), int(toks[0][1])) == _s_counts[p] else '!='} "
+        f"live {_s_counts[p][0]}/{_s_counts[p][1]}"
+        for lab, toks, p in _s_sites)
+    s_detail += f" ({len(_s_sites)} sites, single-match-each {'OK' if s_ok else 'FAIL'})"
+    gates["(s) §7 residual-diagnostics verdict-total prose numerals == live gate-line counts"] = (
+        s_ok,
+        s_detail,
+    )
+
+    print("§8/§9 report-inventory consistency probe (deterministic read-only"
           "re-derivation of the reproducibility catalog from REPORT.md + "
           "run_all_verifications.py + README.md + the filesystem; "
           "consistency claim, no fitting, nothing frozen)")
@@ -835,6 +952,11 @@ def main() -> None:
           f"CSV {_n_rows} rows, {_f_prose} → {_l_prose} "
           f"({_span_days} days), {int(_step_s)} s step, split "
           f"{_split70}/{_held} : {'OK' if _r_ok else 'FAIL'}")
+    print(f"    §7 residual-diagnostics verdict-total prose numerals gated "
+          f"by (s): {len(_s_sites)} sites "
+          + ", ".join(f"{_s_lab[_p]} {_s_counts[_p][0]}/{_s_counts[_p][1]}"
+                      for _p in _s_counts)
+          + f") : {'OK' if s_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -881,6 +1003,22 @@ def main() -> None:
               f"data/energydata_complete.csv ({_n_rows} rows, "
               f"{_f_prose} → {_l_prose} ({_span_days} days, "
               f"{int(_step_s)} s step, split {_split70}/{_held}), "
+              f"the six §7 residual-diagnostics body-prose verdict-total "
+              f"numerals re-verify against the citing probes' live gate-line "
+              f"counts (housezone_audit "
+              f"{_s_counts['verify_housezone_audit.py'][0]}/"
+              f"{_s_counts['verify_housezone_audit.py'][1]}, horizontrade "
+              f"{_s_counts['verify_horizontrade_within.py'][0]}/"
+              f"{_s_counts['verify_horizontrade_within.py'][1]}, marginthin "
+              f"{_s_counts['verify_marginthin_within.py'][0]}/"
+              f"{_s_counts['verify_marginthin_within.py'][1]}, metrictuple "
+              f"{_s_counts['verify_metrictuple_within.py'][0]}/"
+              f"{_s_counts['verify_metrictuple_within.py'][1]}, selection_cv "
+              f"{_s_counts['verify_selection_cv_within.py'][0]}/"
+              f"{_s_counts['verify_selection_cv_within.py'][1]}, "
+              f"negativecontrols "
+              f"{_s_counts['verify_negativecontrols_within.py'][0]}/"
+              f"{_s_counts['verify_negativecontrols_within.py'][1]}), "
               f"and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
