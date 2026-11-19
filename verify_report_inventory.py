@@ -88,6 +88,26 @@ the filesystem, gating on every §8/§9 invariant:
       they cannot drift without this gate failing.  Each scoped regex must
       find its site — a numeral removed from the prose FAILs, never
       vacuous-passes;
+  (o) the four neighbouring deterministic read-only probes' verdict
+      numerals on the §8 machinery lines and the §9 dataset_provenance row
+      (the "N/N gates PASS" verdict each of those probes ends its line
+      with): the numeral must equal each probe's OWN live gate total, not
+      this probe's.  Live totals are derived by RUNNING the four probes
+      via subprocess (a HEAD-less, read-only, deterministic re-derivation:
+      each is a self-contained reader with a fixed gate count) — the three
+      SUMMARY-style probes (verify_solar_within.py -> 44, verify_selection_
+      cv_within.py -> 45, verify_negativecontrols_within.py -> 34) print
+      "=== SUMMARY: N/N gates PASS ===" whose denominator is the total; the
+      dataset-provenance probe prints no SUMMARY line, so its total is the
+      count of its plain gates["(…] dict keys (11) — a static count that
+      IS exact for that probe because its gates dict is a literal (an
+      in-probe self-description gate, out of scope here, would be the
+      durable answer).  The §8 lines for
+      solar/selection/negativecontrols and the dataset-provenance line on
+      BOTH §8 and §9 each carry exactly one "N/N gates PASS" token that
+      must equal the run-derived total; a missing numeral, a stray second
+      token, or a numeral stale from a probe-gate change FAILs, never
+      vacuous-passes;
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -113,6 +133,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 REPORT = pathlib.Path("REPORT.md")
@@ -303,6 +324,63 @@ def main() -> None:
         == [n_checks, n_selftests, n, n, n_selftests, n_checks]
     )
 
+    # (o) the four neighbouring deterministic read-only probes' verdict
+    #     numerals ("N/N gates PASS") — the §8 machinery lines for
+    #     verify_solar_within.py / verify_selection_cv_within.py /
+    #     verify_negativecontrols_within.py, and the §8 line AND §9 Files
+    #     row for verify_dataset_provenance.py — must equal each probe's OWN
+    #     live gate total, not this probe's.  Live totals are derived
+    #     read-only by RUNNING each probe (subprocess, same interpreter, the
+    #     script's own directory as cwd): the three SUMMARY-style probes
+    #     print "=== SUMMARY: N/N gates PASS ===" whose denominator is the
+    #     live total; verify_dataset_provenance.py prints no SUMMARY line, so
+    #     its total is the count of its gates["(…] dict-literal keys (that
+    #     static count IS exact for THIS probe because its gates dict is a
+    #     plain literal with no loop-expanded entries).  Each scoped line
+    #     must carry EXACTLY ONE token equal to its probe's live total — the
+    #     findall len==1 guards make a missing numeral, a stray second token,
+    #     or a stale numeral (a probe-gate change without the coordinated
+    #     report bump) FAIL, never vacuous-pass.
+    _root = pathlib.Path(__file__).parent
+    _sum_re = re.compile(r"=== SUMMARY: (\d+)/(\d+) gates PASS ===")
+    _live = {}
+    for _p in ("verify_dataset_provenance.py", "verify_solar_within.py",
+               "verify_selection_cv_within.py",
+               "verify_negativecontrols_within.py"):
+        _r = subprocess.run([sys.executable, _p], cwd=_root,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=1800)
+        _m = _sum_re.search(_r.stdout)
+        if _m:
+            _live[_p] = int(_m.group(2))
+        else:
+            _live[_p] = len(re.findall(r'gates\["\(',
+                                       (_root / _p).read_text()))
+    _sh = {"verify_dataset_provenance.py": "dataset_provenance",
+           "verify_solar_within.py": "solar",
+           "verify_selection_cv_within.py": "selection_cv",
+           "verify_negativecontrols_within.py": "negativecontrols"}
+    _o_sites = []
+    for _p in _sh:
+        _prs = re.findall(
+            rf"^python3 {_p.replace('.', r'\.')}[^\n]*?(\d+)/(\d+) gates PASS",
+            block, re.M)
+        _o_sites.append((f"§8 {_sh[_p]}", _prs, _p))
+    _dp_s9 = re.findall(
+        r"^\|\s*`verify_dataset_provenance\.py`[^\n]*?(\d+)/(\d+) gates PASS",
+        sec9, re.M)
+    _o_sites.append(("§9 dataset_provenance", _dp_s9,
+                     "verify_dataset_provenance.py"))
+    o_ok = all(len(prs) == 1
+               and int(prs[0][0]) == _live[p] and int(prs[0][1]) == _live[p]
+               for _, prs, p in _o_sites)
+    o_detail = "; ".join(
+        f"{lab} {prs[0][0] + '/' + prs[0][1] if len(prs) == 1 else ('missing' if not prs else 'multi')} "
+        f"{'==' if len(prs) == 1 and int(prs[0][0]) == _live[p] and int(prs[0][1]) == _live[p] else '!='} "
+        f"live {_live[p]}"
+        for lab, prs, p in _o_sites)
+    o_detail += f" ({len(_o_sites)} sites, single-match-each {'OK' if o_ok else 'FAIL'})"
+
     # (i) README.md's committed verification-count sites vs derived totals;
     #     non-empty guards: a regex that matches NOTHING must FAIL loudly, not
     #     vacuous-pass (the all([]) == True trap — the six sites are committed
@@ -400,14 +478,19 @@ def main() -> None:
         ),
     }
 
-    # (m) and (n) appended AFTER the dict: (m)'s "N/N gates PASS" numeral must
-    #     equal the TOTAL gate count including both appends (len + 2 while the
-    #     dict holds the a..l gates), and each of the two self-description
-    #     lines must carry EXACTLY ONE "N/N gates PASS" token (findall — a
-    #     missing site or a stray second token FAILs); (n) then gates the same
-    #     two lines' PROSE numerals (50 probes / 45 items / 14 programs /
-    #     checks 53) against the derived counts.
-    n_gates = len(gates) + 2
+    # (m), (n) and (o) appended AFTER the dict: (m)'s "N/N gates PASS" numeral
+    #     must equal the TOTAL gate count including all three appends (len + 3
+    #     while the dict holds the a..l gates), and each of the two self-
+    #     description lines must carry EXACTLY ONE "N/N gates PASS" token
+    #     (findall — a missing site or a stray second token FAILs); (n) then
+    #     gates the same two lines' PROSE numerals (50 probes / 45 items / 14
+    #     programs / checks 53) against the derived counts; (o) gates the four
+    #     neighbouring read-only probes' OWN verdict numerals against their
+    #     subprocess-derived live gate totals (this probe's total is NOT used
+    #     there — the §8 lines for solar/selection/negativecontrols and the
+    #     §8 line + §9 row for dataset_provenance carry N/N tokens whose N is
+    #     that probe's gate count, derived by running the probe).
+    n_gates = len(gates) + 3
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -434,6 +517,10 @@ def main() -> None:
         f"breakdown {'/'.join(s9_break[0]) if s9_break else 'missing'} "
         f"== checks {n_checks} = {n_selftests} self-tests + {n} probes "
         f"(9 sites, single-match-each {'OK' if prose_ok else 'FAIL'})",
+    )
+    gates["(o) neighbouring probes' verdict numerals == their live totals"] = (
+        o_ok,
+        o_detail,
     )
 
     print("§8/§9 report-inventory consistency probe (deterministic read-only "
@@ -473,6 +560,10 @@ def main() -> None:
           f"breakdown {'/'.join(s9_break[0]) if s9_break else 'missing'} "
           f"== checks {n_checks} = {n_selftests} self-tests + {n} probes) "
           f": {'OK' if prose_ok else 'FAIL'}")
+    print(f"    neighbouring-probe verdict numerals gated by (o): "
+          f"{len(_o_sites)} sites (live totals by subprocess run: "
+          + ", ".join(f"{_sh[_p]} {_live[_p]}" for _p in _sh)
+          + f") : {'OK' if o_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -494,7 +585,13 @@ def main() -> None:
               f"three hand-bumped count literals plus README.md's six "
               f"verification-count sites, REPORT.md's two machinery "
               f"self-test literals and its results-artifact count literals "
-              f"cannot drift from the derived count, and REPORT.md's own "
+              f"cannot drift from the derived count, the four neighbouring "
+              f"read-only probes' own verdict numerals re-verify against "
+              f"their live gate totals (dataset_provenance "
+              f"{_live['verify_dataset_provenance.py']}, solar "
+              f"{_live['verify_solar_within.py']}, selection_cv "
+              f"{_live['verify_selection_cv_within.py']}, negativecontrols "
+              f"{_live['verify_negativecontrols_within.py']}), and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
               f"numerals — {n} probes, {n_items} §7 items, {n_progs} "
