@@ -193,6 +193,21 @@ the filesystem, gating on every §8/§9 invariant:
       verdicts' own totals to the gate lines the probes actually ran —
       a probe-gate change without the body-bullet bump FAILs, never
       vacuous-passes.
+  (t) the §7/§9 "N/N fresh gates PASS" verdict-total prose numerals — the
+      within-train FRESH-leg totals of the two block-style probes whose
+      gates block also carries a frozen audit leg (item 36 rhocollapse §7
+      body line 478 + §9 row line 668, item 37 episode §7 body line 485):
+      the report discriminates the fresh leg ("N/N fresh gates PASS", gated
+      here) from the frozen leg ("6/6 / 10/10 PASS" bare audit-total
+      tokens — a separate literal class, not gated here).  Fresh = the
+      "gates ("-to-"verdict:" block lines marked PASS (denominator
+      PASS|FAIL, as in (s)) whose text does NOT contain "frozen": for
+      rhocollapse that excludes gate (iv) "frozen decomposition re-derives"
+      (fresh 3 of 4 gate lines), for episode no gate text is frozen (fresh
+      5).  rhocollapse is in no earlier gate's probe list and the
+      word-"fresh" token form does not match any existing "N/N gates PASS"
+      census regex, so before (t) a probe-gate change without the report
+      bump could not FAIL — now it FAILs, never vacuous-passes.
 
 Note what is NOT gated: §8's machinery code-block lines (13 at the time of
 writing) are covered by gates (a) and (l); their LINE COUNT is
@@ -736,11 +751,12 @@ def main() -> None:
         ),
     }
 
-    # (m), (n), (o), (p), (q), (r) and (s) appended AFTER the dict: (m)'s
+    # (m), (n), (o), (p), (q), (r), (s) and (t) appended AFTER the dict:
+    #     (m)'s
     #     "N/N
     #     gates
-    #     PASS" numeral must equal the TOTAL gate count including all seven
-    #     appends (len + 7 while the dict holds the a..l gates), and each of
+    #     PASS" numeral must equal the TOTAL gate count including all eight
+    #     appends (len + 8 while the dict holds the a..l gates), and each of
     #     the two self-description lines must carry EXACTLY ONE "N/N gates
     #     PASS" token (findall — a missing site or a stray second token
     #     FAILs); (n) then gates the same two lines' PROSE numerals (50 probes / 45 items / 14
@@ -757,7 +773,7 @@ def main() -> None:
     #     selection_cv/negativecontrols — against the same live totals;
     #     (r) gates the §1/§2.3 dataset-provenance prose numerals against a
     #     read-only derivation from data/energydata_complete.csv.
-    n_gates = len(gates) + 7
+    n_gates = len(gates) + 8
     self_all = self_s8 + self_s9
     self_parity = (self_all
                    and all(num == den for num, den in self_all)
@@ -897,6 +913,78 @@ def main() -> None:
         s_detail,
     )
 
+    # (t) the §7/§9 "N/N fresh gates PASS" verdict-total prose numerals —
+    #     the within-train FRESH-leg totals of the two block-style probes
+    #     whose gates block also carries a frozen audit leg (item 36
+    #     rhocollapse §7 body + §9 row, item 37 episode §7 body): the report
+    #     discriminates the fresh leg ("N/N fresh gates PASS") from the
+    #     frozen leg ("6/6 / 10/10 PASS" bare audit-total tokens — a separate
+    #     literal class, not gated here).  Fresh = the "gates ("-to-
+    #     "verdict:" block lines marked PASS (denominator PASS|FAIL, as in
+    #     (s)) whose text does NOT contain "frozen": for rhocollapse that
+    #     excludes gate (iv) "frozen decomposition re-derives" (fresh 3 of 4
+    #     gate lines), for episode no gate text is frozen (fresh 5).
+    #     rhocollapse is in no earlier gate's probe list and the word-"fresh"
+    #     token form does not match any existing "N/N gates PASS" census
+    #     regex, so before (t) a probe-gate change without the report bump
+    #     could not FAIL — now it FAILs, never vacuous-passes.
+    _t_probes = ("verify_freerun_rhocollapse_within.py",
+                 "verify_freerun_episode_within.py")
+    _t_lab = {"verify_freerun_rhocollapse_within.py": "rhocollapse",
+              "verify_freerun_episode_within.py": "freerun_episode"}
+    _t_counts = {}
+    for _p in _t_probes:
+        _r = subprocess.run([sys.executable, _p], cwd=_root,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, timeout=1800)
+        _lines = _r.stdout.splitlines()
+        _start = next((i for i, ln in enumerate(_lines)
+                       if _q_qs_re.match(ln)), None)
+        if _start is None:
+            _t_counts[_p] = (-1, -1)  # missing gates header -> FAIL
+            continue
+        _end = next((i for i in range(_start + 1, len(_lines))
+                     if _q_verdict_re.match(_lines[i])), None)
+        if _end is None:
+            _t_counts[_p] = (-1, -1)  # missing verdict line -> FAIL
+            continue
+        _blk = _lines[_start:_end]
+        _t_counts[_p] = (sum(1 for ln in _blk
+                             if _s_pass_re.match(ln) and "frozen" not in ln),
+                         sum(1 for ln in _blk
+                             if _s_any_re.match(ln) and "frozen" not in ln))
+    _t_rx = {
+        "verify_freerun_rhocollapse_within.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2762 open-loop steps\):\*\* the collapse direction[^\n]*?"
+            r"(\d+)/(\d+) fresh gates PASS",
+        "verify_freerun_episode_within.py":
+            r"^- \*\*Within-train val-block leg \(fresh fits, 20 days, "
+            r"n = 2762 open-loop steps\):\*\* the episode geometry[^\n]*?"
+            r"(\d+)/(\d+) fresh gates PASS",
+    }
+    _t_sites = []
+    for _p in _t_probes:
+        _toks = re.findall(_t_rx[_p], text, re.M)
+        _t_sites.append((f"§7 body {_t_lab[_p]}", _toks, _p))
+    _toks = re.findall(r"^\|\s*`verify_freerun_rhocollapse_within\.py`"
+                       r"[^\n]*?(\d+)/(\d+) fresh gates PASS", sec9, re.M)
+    _t_sites.append(("§9 row rhocollapse", _toks,
+                     "verify_freerun_rhocollapse_within.py"))
+    t_ok = all(len(toks) == 1
+               and (int(toks[0][0]), int(toks[0][1])) == _t_counts[p]
+               for _, toks, p in _t_sites)
+    t_detail = "; ".join(
+        f"{lab} {toks[0][0] + '/' + toks[0][1] if len(toks) == 1 else ('missing' if not toks else 'multi: ' + str(len(toks)))} "
+        f"{'==' if len(toks) == 1 and (int(toks[0][0]), int(toks[0][1])) == _t_counts[p] else '!='} "
+        f"live fresh {_t_counts[p][0]}/{_t_counts[p][1]}"
+        for lab, toks, p in _t_sites)
+    t_detail += f" ({len(_t_sites)} sites, single-match-each {'OK' if t_ok else 'FAIL'})"
+    gates["(t) §7/§9 fresh-leg 'N/N fresh gates PASS' prose numerals == live fresh gate-line counts"] = (
+        t_ok,
+        t_detail,
+    )
+
     print("§8/§9 report-inventory consistency probe (deterministic read-only"
           "re-derivation of the reproducibility catalog from REPORT.md + "
           "run_all_verifications.py + README.md + the filesystem; "
@@ -957,6 +1045,11 @@ def main() -> None:
           + ", ".join(f"{_s_lab[_p]} {_s_counts[_p][0]}/{_s_counts[_p][1]}"
                       for _p in _s_counts)
           + f") : {'OK' if s_ok else 'FAIL'}")
+    print(f"    §7/§9 fresh-leg 'N/N fresh gates PASS' verdict-total prose "
+          f"numerals gated by (t): {len(_t_sites)} sites "
+          + ", ".join(f"{_t_lab[_p]} {_t_counts[_p][0]}/{_t_counts[_p][1]}"
+                      for _p in _t_probes)
+          + f") : {'OK' if t_ok else 'FAIL'}")
     print()
     print("  committed-invariant gates:")
     all_ok = True
@@ -1019,6 +1112,14 @@ def main() -> None:
               f"negativecontrols "
               f"{_s_counts['verify_negativecontrols_within.py'][0]}/"
               f"{_s_counts['verify_negativecontrols_within.py'][1]}), "
+              f"the §7/§9 fresh-leg 'N/N fresh gates PASS' numerals re-verify "
+              f"against the same probes' live fresh gate-line counts"
+              f" (rhocollapse "
+              f"{_t_counts['verify_freerun_rhocollapse_within.py'][0]}/"
+              f"{_t_counts['verify_freerun_rhocollapse_within.py'][1]}, "
+              f"freerun_episode "
+              f"{_t_counts['verify_freerun_episode_within.py'][0]}/"
+              f"{_t_counts['verify_freerun_episode_within.py'][1]}), "
               f"and REPORT.md's own "
               f"description of this probe ({n_gates}/{n_gates} gates PASS "
               f"on both its §8 machinery line and its §9 row, whose prose "
